@@ -1,0 +1,12 @@
+# Secrets and personal settings
+.env
+
+# Python's virtual environment and cache files
+.venv/
+__pycache__/
+
+# Downloaded data (it can always be fetched again)
+data/
+
+# Mac system files
+.DS_Store
