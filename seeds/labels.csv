@@ -1,21 +1,22 @@
-label_name,musicbrainz_id,notes
-Warp,,
-XL Recordings,,
-International Anthem,,
-Thrill Jockey,,
-kranky,,
-STROOM.tv,,
-RVNG Intl.,,
-Music From Memory,,
-YEAR0001,,
-Halcyon Veil,,
-Ninja Tune,,
-Hyperdub,,
-Merge Records,,
-Numero Group,,
-Dirty Hit,,
-Drag City,,
-4AD,,
-AD 93,,
-Mexican Summer,,
-Domino Recording Co.,,
+label_name,musicbrainz_id,mili_label,notes
+Warp,46f0f4cd-8aab-4b33-b698-f459faf64190,Warp,
+XL Recordings,14221f01-8939-4ea0-b8f1-b5a21beae80a,XL Recordings,
+International Anthem,817464f6-8b69-4467-988c-1ce0bc23122e,International Anthem,MusicBrainz name: International Anthem Recording Co.
+Thrill Jockey,5194917c-215b-4094-b5ec-4005e408b2df,Thrill Jockey,
+kranky,4536e738-6350-4cae-af70-79d56d106c45,kranky,
+STROOM.tv,a7086e23-255c-4f10-b470-192c3b6060e4,STROOM.tv,"MusicBrainz name is STROOM 〰, only found with the looser search"
+RVNG Intl.,aae903d5-4e2e-4db0-8b25-f068f0b8c8a4,RVNG Intl.,
+Music From Memory,ad86a666-43d7-41b8-8328-8b2b3497a781,Music From Memory,
+YEAR0001,f722d3e7-56d1-46a2-a51f-8ca43cc6e26b,YEAR0001,
+Halcyon Veil,aa42cbff-e207-4050-a96a-a00cc9c3877d,Halcyon Veil,
+Ninja Tune,dc940013-b8a8-4362-a465-291026c04b42,Ninja Tune,"Main imprint only for now; sub-labels (Ninja Tune XX, Big Dada, Counter) left out"
+Hyperdub,d73fd0e0-8799-4506-ad1b-6342bf46fc77,Hyperdub,
+Merge Records,5a4f8d65-681e-4a1f-85a8-a874c9513888,Merge Records,
+Numero Group,48cdb429-5d99-4ae5-8bc1-7bc7b68098b4,Numero Group,
+Dirty Hit,00912541-da5c-400f-9ea5-dde92828aa6a,Dirty Hit,CHECK: label type is missing in MusicBrainz; confirm releases are attached to this entry
+Drag City,b5d3c9c7-5f73-4ebc-b400-e5075c9101a4,Drag City,
+4AD,a539bb1e-f2e1-4b45-9db8-8053841e7503,4AD,
+AD 93,92463c32-4730-459f-ba31-b8b61f4194b1,AD 93,Name since 2020-06-12; earlier releases are under Whities
+Whities,7930552d-0098-4fd1-ae83-5247b35ba8c3,AD 93,Earlier name of AD 93 (before 2020-06-12)
+Mexican Summer,2c6049c6-7335-4d03-b264-234b314b03b5,Mexican Summer,
+Domino Recording Co.,bfe26801-a86f-49b9-8502-05ae80b02594,Domino Recording Co.,MusicBrainz name: Domino (UK; WIG/RUG catalogue numbers)
