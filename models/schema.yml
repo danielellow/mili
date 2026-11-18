@@ -43,6 +43,32 @@ models:
               arguments:
                 values: ['edition', 'album']
 
+  - name: bronze_barcode_lookups
+    description: Every answer from the Apple, Deezer and Spotify barcode lookups, as saved by the lookup script.
+    columns:
+      - name: work_id
+        data_tests: [not_null]
+
+  - name: silver_platform_matches
+    description: Newest lookup answer per work and platform, with the match check (exact barcode, or title check for other barcodes).
+    columns:
+      - name: match_id
+        data_tests: [unique, not_null]
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['found', 'not_found']
+      - name: platform_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('platforms')
+                field: platform_id
+
+  - name: gold_platform_match_summary
+    description: Per platform, how the barcode lookups went (found, matched on barcode, accepted on title, rejected).
+
   - name: gold_works
     description: One row per work (album, EP, single ...), with top genres and the main Discogs link.
     columns:
@@ -63,7 +89,7 @@ models:
                 field: work_id
 
   - name: gold_instances
-    description: Each place a work lives on one of our platforms (as known to MusicBrainz).
+    description: Each place a work lives on one of our platforms, from MusicBrainz links and accepted barcode lookups.
     columns:
       - name: instance_id
         data_tests: [unique, not_null]

@@ -1,9 +1,10 @@
 -- GOLD (analysis): for each label and platform, how many of the label's works
--- have a link to that platform in MusicBrainz.
+-- have a known link to that platform.
 --
--- Note: this measures what MusicBrainz KNOWS, not yet what is really available.
--- A missing link can mean the work isn't on the platform, or just that nobody
--- has added the link. Later steps (Odesli, Bandcamp) will fill in more.
+-- "Known" = a link from MusicBrainz, or (for Apple Music, Deezer and Spotify)
+-- an accepted barcode lookup. A missing link can still mean the work isn't on
+-- the platform, or just that we haven't found it: works without a barcode
+-- can't be looked up yet.
 
 with label_totals as (
 
