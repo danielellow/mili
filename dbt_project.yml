@@ -1,0 +1,42 @@
+# The dbt project for mili.
+# dbt turns the raw MusicBrainz files into clean tables, in three layers:
+#   bronze = raw data, just made readable as rows
+#   silver = cleaned, one row per thing (release, album, link ...)
+#   gold   = the finished tables the app and the analysis read from
+
+name: mili
+version: "0.1.0"
+config-version: 2
+profile: mili
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+
+vars:
+  # where the Python scripts save the raw files
+  raw_dir: "data/raw"
+
+models:
+  mili:
+    +materialized: table   # every model is saved as a real table in DuckDB
+
+seeds:
+  mili:
+    labels:
+      +column_types:
+        label_name: varchar
+        musicbrainz_id: varchar
+        mili_label: varchar
+        notes: varchar
+    platforms:
+      +column_types:
+        platform_id: varchar
+        display_name: varchar
+        listen: boolean
+        buy: boolean
+        default_order: integer
+    platform_domains:
+      +column_types:
+        domain: varchar
+        platform_id: varchar

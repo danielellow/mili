@@ -1,0 +1,9 @@
+# Tells dbt which database to use. DuckDB is just one file on your laptop,
+# inside the data folder (which is never uploaded to GitHub).
+mili:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: data/mili.duckdb
+      threads: 4

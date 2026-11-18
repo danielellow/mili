@@ -1,0 +1,110 @@
+# Descriptions and tests for every model.
+# `dbt build` runs the tests automatically: e.g. "unique" checks that no ID
+# appears twice, "relationships" checks that every ID points to something real.
+
+version: 2
+
+models:
+
+  - name: bronze_mb_releases
+    description: Every release exactly as MusicBrainz sent it, one row per release per fetch run.
+    columns:
+      - name: release_id
+        data_tests: [not_null]
+
+  - name: silver_mb_releases
+    description: One row per release (edition), newest fetch only, with the useful fields as columns.
+    columns:
+      - name: release_id
+        data_tests: [unique, not_null]
+      - name: release_group_id
+        data_tests: [not_null]
+
+  - name: silver_mb_release_groups
+    description: One row per release group, which mili treats as a work.
+    columns:
+      - name: release_group_id
+        data_tests: [unique, not_null]
+
+  - name: silver_mb_release_group_genres
+    description: Community-voted genres per work.
+
+  - name: silver_mb_release_labels
+    description: The labels each release is on, with catalogue numbers, marking our seed labels.
+
+  - name: silver_mb_urls
+    description: Every link MusicBrainz knows for our releases and works, matched to a platform where possible.
+    columns:
+      - name: url
+        data_tests: [not_null]
+      - name: level
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['edition', 'album']
+
+  - name: gold_works
+    description: One row per work (album, EP, single ...), with top genres and the main Discogs link.
+    columns:
+      - name: work_id
+        data_tests: [unique, not_null]
+
+  - name: gold_label_works
+    description: Which works belong to which mili label.
+    columns:
+      - name: mili_label
+        data_tests: [not_null]
+      - name: work_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_works')
+                field: work_id
+
+  - name: gold_instances
+    description: Each place a work lives on one of our platforms (as known to MusicBrainz).
+    columns:
+      - name: instance_id
+        data_tests: [unique, not_null]
+      - name: work_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('gold_works')
+                field: work_id
+      - name: platform_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('platforms')
+                field: platform_id
+
+  - name: gold_label_platform_coverage
+    description: For each label and platform, the share of works with a known link (first analysis table).
+
+seeds:
+
+  - name: labels
+    description: The seed labels and their MusicBrainz IDs, chosen by hand.
+    columns:
+      - name: musicbrainz_id
+        data_tests: [unique, not_null]
+
+  - name: platforms
+    description: The platforms mili links to, in the default display order.
+    columns:
+      - name: platform_id
+        data_tests: [unique, not_null]
+
+  - name: platform_domains
+    description: Web domains used to recognise each platform in a link.
+    columns:
+      - name: domain
+        data_tests: [unique, not_null]
+      - name: platform_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('platforms')
+                field: platform_id

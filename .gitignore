@@ -10,3 +10,9 @@ data/
 
 # Mac system files
 .DS_Store
+
+# dbt's working folders (rebuilt every run)
+target/
+logs/
+dbt_packages/
+.user.yml
