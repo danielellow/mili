@@ -1,10 +1,12 @@
 -- GOLD: the INSTANCES of each work: one row per place a work lives on one of
 -- our platforms.
 --
--- Links come from two sources:
+-- Links come from three sources:
 --   musicbrainz     links the MusicBrainz community has added
 --   barcode_lookup  links we found by asking Apple, Deezer and Spotify directly,
 --                   and that passed the match check in silver_platform_matches
+--   title_search    Deezer links found by searching artist + title, that passed
+--                   the stricter check in silver_deezer_title_matches
 -- If both sources give the same link, it appears once, with both sources listed.
 --
 -- A work can have several instances on the same platform, for example on the
@@ -41,11 +43,29 @@ lookup_links as (
 
 ),
 
+title_search_links as (
+
+    select
+        work_id,
+        'deezer' as platform_id,
+        url,
+        null::varchar as relation_type,
+        null::varchar as release_id,
+        'album' as level,
+        'title_search' as source
+    from {{ ref('silver_deezer_title_matches') }}
+    where is_accepted
+      and url is not null
+
+),
+
 all_links as (
 
     select * from musicbrainz_links
     union all
     select * from lookup_links
+    union all
+    select * from title_search_links
 
 )
 

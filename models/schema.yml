@@ -69,6 +69,21 @@ models:
   - name: gold_platform_match_summary
     description: Per platform, how the barcode lookups went (found, matched on barcode, accepted on title, rejected).
 
+  - name: bronze_deezer_title_search
+    description: Every answer from the Deezer artist + title search, as saved by the search script.
+    columns:
+      - name: work_id
+        data_tests: [not_null]
+
+  - name: silver_deezer_title_matches
+    description: Best Deezer candidate per searched work, accepted only if both artist and title match closely.
+    columns:
+      - name: work_id
+        data_tests: [unique, not_null]
+
+  - name: gold_title_search_summary
+    description: How the Deezer title search went, split by whether the work has a barcode.
+
   - name: gold_works
     description: One row per work (album, EP, single ...), with top genres and the main Discogs link.
     columns:
@@ -89,7 +104,7 @@ models:
                 field: work_id
 
   - name: gold_instances
-    description: Each place a work lives on one of our platforms, from MusicBrainz links and accepted barcode lookups.
+    description: Each place a work lives on one of our platforms, from MusicBrainz links, accepted barcode lookups and accepted Deezer title searches.
     columns:
       - name: instance_id
         data_tests: [unique, not_null]

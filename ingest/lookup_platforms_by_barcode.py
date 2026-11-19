@@ -58,6 +58,9 @@ SECONDS_BETWEEN_CALLS = {"apple": 3.2, "deezer": 0.2, "spotify": 1.0}
 # Which Apple Music store to look in (two-letter country code).
 APPLE_COUNTRY = "us"
 
+# The platform names used in the dbt tables (see seeds/platforms.csv)
+PLATFORM_IDS = {"apple": "apple_music", "deezer": "deezer", "spotify": "spotify"}
+
 MAX_TRIES = 5
 
 
@@ -69,21 +72,34 @@ class StopForNow(Exception):
 # Choosing which barcodes to look up
 # ---------------------------------------------------------------------------
 
-def works_to_look_up(labels):
+def works_to_look_up(labels, platform, skip_known):
     """
     One barcode per work, read from the DuckDB database dbt built.
     Prefers editions whose format includes "Digital", then the earliest one.
     With --label, only works on those labels (the mili_label names).
+    With --skip-known, leaves out works that already have a link to this
+    platform from MusicBrainz (saves quota on platforms that limit requests).
     """
     if not DATABASE.exists():
         sys.exit("No database found. Run `dbt build` first, then try again.")
 
-    label_filter = ""
     params = []
+
+    known_filter = ""
+    if skip_known:
+        known_filter = """
+            and not exists (
+                select 1 from silver_mb_urls u
+                where u.release_group_id = c.work_id
+                  and u.platform_id = ?
+            )"""
+        params.append(PLATFORM_IDS[platform])
+
+    label_filter = ""
     if labels:
         placeholders = ", ".join("?" for _ in labels)
         label_filter = f"and lower(lw.mili_label) in ({placeholders})"
-        params = [label.lower() for label in labels]
+        params += [label.lower() for label in labels]
 
     query = f"""
         with candidates as (
@@ -105,6 +121,7 @@ def works_to_look_up(labels):
         from candidates c
         join gold_label_works lw on lw.work_id = c.work_id
         where c.preference = 1
+        {known_filter}
         {label_filter}
         order by c.work_id
     """
@@ -323,9 +340,11 @@ def main():
                         help="only works on this mili label (can be used several times)")
     parser.add_argument("--limit", type=int, default=None,
                         help="stop after this many lookups (handy for a quick test)")
+    parser.add_argument("--skip-known", action="store_true",
+                        help="skip works that already have a MusicBrainz link to this platform")
     args = parser.parse_args()
 
-    works = works_to_look_up(args.label)
+    works = works_to_look_up(args.label, args.platform, args.skip_known)
     found_before, tried_before = previous_answers(args.platform)
     second_tries = deezer_barcodes() if args.platform != "deezer" else {}
 
