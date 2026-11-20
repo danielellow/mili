@@ -1,12 +1,16 @@
 -- GOLD: the INSTANCES of each work: one row per place a work lives on one of
 -- our platforms.
 --
--- Links come from three sources:
+-- Links come from these sources:
 --   musicbrainz     links the MusicBrainz community has added
 --   barcode_lookup  links we found by asking Apple, Deezer and Spotify directly,
 --                   and that passed the match check in silver_platform_matches
 --   title_search    Deezer links found by searching artist + title, that passed
 --                   the stricter check in silver_deezer_title_matches
+--   bandcamp_page   releases listed on the label's own Bandcamp page, matched
+--                   to a work in silver_bandcamp_label_matches
+--   odesli          links from Odesli (song.link), starting from one link we
+--                   already had, that passed the title check in silver_odesli_links
 -- If both sources give the same link, it appears once, with both sources listed.
 --
 -- A work can have several instances on the same platform, for example on the
@@ -59,6 +63,36 @@ title_search_links as (
 
 ),
 
+bandcamp_page_links as (
+
+    select
+        work_id,
+        'bandcamp' as platform_id,
+        item_url as url,
+        null::varchar as relation_type,
+        null::varchar as release_id,
+        'album' as level,
+        'bandcamp_page' as source
+    from {{ ref('silver_bandcamp_label_matches') }}
+    where is_matched
+
+),
+
+odesli_links as (
+
+    select
+        work_id,
+        platform_id,
+        url,
+        null::varchar as relation_type,
+        null::varchar as release_id,
+        'album' as level,
+        'odesli' as source
+    from {{ ref('silver_odesli_links') }}
+    where is_accepted
+
+),
+
 all_links as (
 
     select * from musicbrainz_links
@@ -66,6 +100,10 @@ all_links as (
     select * from lookup_links
     union all
     select * from title_search_links
+    union all
+    select * from bandcamp_page_links
+    union all
+    select * from odesli_links
 
 )
 

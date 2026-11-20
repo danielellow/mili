@@ -40,3 +40,8 @@ seeds:
       +column_types:
         domain: varchar
         platform_id: varchar
+    label_bandcamp_pages:
+      +column_types:
+        mili_label: varchar
+        bandcamp_url: varchar
+        notes: varchar

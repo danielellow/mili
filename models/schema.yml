@@ -84,6 +84,38 @@ models:
   - name: gold_title_search_summary
     description: How the Deezer title search went, split by whether the work has a barcode.
 
+  - name: bronze_bandcamp_label_items
+    description: Every release listed on the labels' own Bandcamp pages, as saved by the page script.
+    columns:
+      - name: item_url
+        data_tests: [not_null]
+
+  - name: silver_bandcamp_label_matches
+    description: Each release on a label's Bandcamp page, matched to one of that label's works (or not, if MusicBrainz doesn't have it).
+    columns:
+      - name: match_id
+        data_tests: [unique, not_null]
+      - name: item_url
+        data_tests: [not_null]
+
+  - name: bronze_odesli_links
+    description: Every answer from Odesli (song.link), as saved by the Odesli script.
+    columns:
+      - name: work_id
+        data_tests: [not_null]
+
+  - name: silver_odesli_links
+    description: One row per platform link Odesli gave for a work, with a title check against MusicBrainz.
+    columns:
+      - name: link_id
+        data_tests: [unique, not_null]
+
+  - name: gold_odesli_summary
+    description: Per platform, how many links Odesli added and how many passed the title check.
+
+  - name: gold_bandcamp_page_summary
+    description: Per label, what reading its own Bandcamp page added, and how many releases are missing from MusicBrainz.
+
   - name: gold_works
     description: One row per work (album, EP, single ...), with top genres and the main Discogs link.
     columns:
@@ -104,7 +136,7 @@ models:
                 field: work_id
 
   - name: gold_instances
-    description: Each place a work lives on one of our platforms, from MusicBrainz links, accepted barcode lookups and accepted Deezer title searches.
+    description: Each place a work lives on one of our platforms, from MusicBrainz links, accepted barcode lookups, accepted Deezer title searches, the labels' own Bandcamp pages and Odesli.
     columns:
       - name: instance_id
         data_tests: [unique, not_null]
@@ -137,6 +169,19 @@ seeds:
     columns:
       - name: platform_id
         data_tests: [unique, not_null]
+
+  - name: label_bandcamp_pages
+    description: Each label's own Bandcamp page(s), checked by hand. A label can have several pages, or none (empty address).
+    columns:
+      - name: bandcamp_url
+        data_tests: [unique]
+      - name: mili_label
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('labels')
+                field: mili_label
 
   - name: platform_domains
     description: Web domains used to recognise each platform in a link.
