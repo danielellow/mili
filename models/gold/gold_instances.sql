@@ -11,6 +11,10 @@
 --                   to a work in silver_bandcamp_label_matches
 --   odesli          links from Odesli (song.link), starting from one link we
 --                   already had, that passed the title check in silver_odesli_links
+--   discogs_lookup  Discogs pages we found by looking up an edition, or searching
+--                   by barcode or artist + title (silver_discogs_matches).
+--                   The ready-made Discogs search links aren't instances: they
+--                   only live in gold_works, as the last fallback.
 -- If both sources give the same link, it appears once, with both sources listed.
 --
 -- A work can have several instances on the same platform, for example on the
@@ -93,6 +97,38 @@ odesli_links as (
 
 ),
 
+discogs_lookup_links as (
+
+    -- the main page (master), when the edition has one
+    select
+        work_id,
+        'discogs' as platform_id,
+        'https://www.discogs.com/master/' || master_id as url,
+        null::varchar as relation_type,
+        null::varchar as release_id,
+        'album' as level,
+        'discogs_lookup' as source
+    from {{ ref('silver_discogs_matches') }}
+    where is_accepted
+      and master_id is not null
+
+    union all
+
+    -- the edition page itself
+    select
+        work_id,
+        'discogs' as platform_id,
+        'https://www.discogs.com/release/' || release_id as url,
+        null::varchar as relation_type,
+        null::varchar as release_id,
+        'edition' as level,
+        'discogs_lookup' as source
+    from {{ ref('silver_discogs_matches') }}
+    where is_accepted
+      and release_id is not null
+
+),
+
 all_links as (
 
     select * from musicbrainz_links
@@ -104,6 +140,8 @@ all_links as (
     select * from bandcamp_page_links
     union all
     select * from odesli_links
+    union all
+    select * from discogs_lookup_links
 
 )
 

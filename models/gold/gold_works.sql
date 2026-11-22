@@ -34,8 +34,8 @@ top_genres as (
 
 discogs_ranked as (
 
-    -- The main Discogs link for a work: the "master" page (all editions) if
-    -- MusicBrainz knows it, otherwise the page of the earliest edition.
+    -- The Discogs links MusicBrainz knows: the "master" page (all editions)
+    -- first, otherwise the page of the earliest edition.
     select
         u.release_group_id,
         u.url,
@@ -53,6 +53,72 @@ discogs_ranked as (
     where u.platform_id = 'discogs'
       and u.discogs_page_type in ('master', 'release')
 
+),
+
+from_musicbrainz as (
+
+    select * from discogs_ranked where preference = 1
+
+),
+
+from_lookup as (
+
+    -- what we found ourselves on Discogs (ingest/lookup_discogs.py)
+    select work_id, master_id, release_id, have, want
+    from {{ ref('silver_discogs_matches') }}
+    where is_accepted
+
+),
+
+discogs_choice as (
+
+    -- Every work gets a Discogs link, in this order:
+    --   1. the master page MusicBrainz links
+    --   2. the master page we found on Discogs
+    --   3. the edition page MusicBrainz links
+    --   4. the edition page we found on Discogs
+    --   5. a ready-made Discogs search for artist + title
+    select
+        g.release_group_id as work_id,
+        case
+            when mb.discogs_page_type = 'master' then 'master'
+            when lk.master_id is not null then 'master'
+            when mb.discogs_page_type = 'release' then 'release'
+            when lk.release_id is not null then 'release'
+            else 'search'
+        end as discogs_page_type,
+        case
+            when mb.discogs_page_type = 'master' then 'musicbrainz'
+            when lk.master_id is not null then 'discogs_lookup'
+            when mb.discogs_page_type = 'release' then 'musicbrainz'
+            when lk.release_id is not null then 'discogs_lookup'
+            else 'search'
+        end as discogs_link_source,
+        case
+            when mb.discogs_page_type = 'master' then mb.url
+            when lk.master_id is not null then 'https://www.discogs.com/master/' || lk.master_id
+            when mb.discogs_page_type = 'release' then mb.url
+            when lk.release_id is not null then 'https://www.discogs.com/release/' || lk.release_id
+            else 'https://www.discogs.com/search/?q='
+                || url_encode(regexp_replace(
+                    -- "Various Artists" only gets in the way of a search
+                    case
+                        when {{ normalize_artist("g.release_group_json ->> '$.artist-credit[0].name'") }} = 'various artists'
+                            then g.title
+                        else concat_ws(' ', g.release_group_json ->> '$.artist-credit[0].name', g.title)
+                    end,
+                    '\p{Cf}', '', 'g'      -- invisible characters some names carry
+                ))
+                || '&type=all'
+        end as discogs_url,
+        lk.have as discogs_have,
+        lk.want as discogs_want
+    from {{ ref('silver_mb_release_groups') }} g
+    left join from_musicbrainz mb
+        on mb.release_group_id = g.release_group_id
+    left join from_lookup lk
+        on lk.work_id = g.release_group_id
+
 )
 
 select
@@ -66,13 +132,15 @@ select
     tg.top_genres,
     e.edition_count,
     e.editions_with_barcode,
-    d.url as discogs_url,
-    d.discogs_page_type
+    d.discogs_url,
+    d.discogs_page_type,            -- master, release or search
+    d.discogs_link_source,          -- musicbrainz, discogs_lookup or search
+    d.discogs_have,                 -- Discogs users who own the edition we looked up
+    d.discogs_want                  -- Discogs users who want it
 from {{ ref('silver_mb_release_groups') }} g
 left join editions e
     on e.release_group_id = g.release_group_id
 left join top_genres tg
     on tg.release_group_id = g.release_group_id
-left join discogs_ranked d
-    on d.release_group_id = g.release_group_id
-    and d.preference = 1
+left join discogs_choice d
+    on d.work_id = g.release_group_id

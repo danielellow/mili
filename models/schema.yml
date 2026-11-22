@@ -116,11 +116,52 @@ models:
   - name: gold_bandcamp_page_summary
     description: Per label, what reading its own Bandcamp page added, and how many releases are missing from MusicBrainz.
 
-  - name: gold_works
-    description: One row per work (album, EP, single ...), with top genres and the main Discogs link.
+  - name: bronze_discogs_lookups
+    description: Every answer from Discogs (edition lookups and searches), as saved by the Discogs script.
+    columns:
+      - name: work_id
+        data_tests: [not_null]
+
+  - name: silver_discogs_matches
+    description: Per looked-up work, the Discogs edition and main page (master) we found, and whether we trust it.
     columns:
       - name: work_id
         data_tests: [unique, not_null]
+      - name: method
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['release_lookup', 'barcode_search', 'title_search']
+
+  - name: gold_discogs_summary
+    description: Per label, where each work's Discogs link comes from (MusicBrainz, our lookup, or a search fallback).
+
+  - name: gold_works
+    description: One row per work (album, EP, single ...), with top genres and its Discogs link. Every work has a Discogs link, at worst a ready-made search.
+    columns:
+      - name: work_id
+        data_tests: [unique, not_null]
+      - name: discogs_url
+        data_tests: [not_null]
+      - name: discogs_page_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['master', 'release', 'search']
+
+  - name: gold_buy_options
+    description: What the app's "buy" menu shows for each work, Bandcamp (when we have a link) and Discogs (always), in menu order.
+    columns:
+      - name: buy_option_id
+        data_tests: [unique, not_null]
+      - name: url
+        data_tests: [not_null]
+      - name: work_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('gold_works')
+                field: work_id
 
   - name: gold_label_works
     description: Which works belong to which mili label.
@@ -136,7 +177,7 @@ models:
                 field: work_id
 
   - name: gold_instances
-    description: Each place a work lives on one of our platforms, from MusicBrainz links, accepted barcode lookups, accepted Deezer title searches, the labels' own Bandcamp pages and Odesli.
+    description: Each place a work lives on one of our platforms, from MusicBrainz links, accepted barcode lookups, accepted Deezer title searches, the labels' own Bandcamp pages, Odesli and Discogs lookups.
     columns:
       - name: instance_id
         data_tests: [unique, not_null]
