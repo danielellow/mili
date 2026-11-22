@@ -18,6 +18,12 @@ Matching the releases to mili's works happens later, in dbt.
 
 This is one request per label (about 20 in total), a few seconds apart.
 
+NOTE: Bandcamp currently blocks automated downloads with a "Client Challenge"
+page. We don't try to get around that. Instead, open each label's /music page
+in your own browser, save it (File > Save Page As..., "Webpage, HTML Only")
+into one folder, and let this script read the saved files:
+    python ingest/fetch_bandcamp_label_pages.py --from-folder ~/Downloads/bandcamp_pages
+
 Examples:
     python ingest/fetch_bandcamp_label_pages.py --label "AD 93"     (a quick test)
     python ingest/fetch_bandcamp_label_pages.py                     (all labels)
@@ -110,11 +116,103 @@ def parse_releases(html, page_url):
     return list(releases.values())
 
 
+def which_page(html, file_name, seed_rows):
+    """
+    Work out which seed page a saved HTML file is. Tries, in order:
+      1. the page's own address, written inside it (og:url / canonical link)
+      2. the file name (e.g. "ad93.bandcamp.com.html")
+      3. which seed address appears most often in the page
+    Returns the matching seed rows (one page can belong to one label).
+    """
+    by_host = {}
+    for row in seed_rows:
+        by_host.setdefault(urlsplit(row["bandcamp_url"].strip()).netloc.lower(), []).append(row)
+
+    soup = BeautifulSoup(html, "html.parser")
+    for tag, attr in (("meta", {"property": "og:url"}), ("link", {"rel": "canonical"})):
+        found = soup.find(tag, attrs=attr)
+        address = found and (found.get("content") or found.get("href"))
+        if address and urlsplit(address).netloc.lower() in by_host:
+            return by_host[urlsplit(address).netloc.lower()]
+
+    lowered = file_name.lower()
+    for host, rows in by_host.items():
+        if host in lowered:
+            return rows
+
+    counts = {host: html.lower().count(host) for host in by_host}
+    best = max(counts, key=counts.get) if counts else None
+    if best and counts[best] > 0:
+        return by_host[best]
+    return []
+
+
+def read_saved_pages(folder, seed_rows, run_dir, out):
+    """
+    Read Bandcamp pages you saved yourself from your browser, instead of
+    downloading them. Bandcamp blocks automated downloads with a "Client
+    Challenge" page, so a person opening the pages is the respectful way.
+    """
+    files = sorted(Path(folder).expanduser().glob("*.htm*"))
+    if not files:
+        print(f"No .html files found in {folder}")
+        return 0
+    total = 0
+    for i, path in enumerate(files, start=1):
+        html = path.read_text(encoding="utf-8", errors="replace")
+        if "Client Challenge" in html[:3000]:
+            print(f"[{i}/{len(files)}] {path.name}: this is Bandcamp's 'Client Challenge' page, "
+                  "not the real page.\n   Open the page in your browser again and save it once it has loaded.")
+            continue
+        rows = which_page(html, path.name, seed_rows)
+        if not rows:
+            print(f"[{i}/{len(files)}] {path.name}: couldn't tell which label's page this is, skipping")
+            continue
+        row = rows[0]
+        host = urlsplit(row["bandcamp_url"].strip()).netloc
+        page_url = f"https://{host}/music"
+        print(f"[{i}/{len(files)}] {path.name} -> {row['mili_label']} ({host})")
+
+        # Keep a copy of the page untouched (the raw layer)
+        (run_dir / f"{slugify(host)}.html").write_text(html, encoding="utf-8")
+        fetched_at = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
+
+        releases = parse_releases(html, page_url)
+        for release in releases:
+            out.write(json.dumps({
+                "mili_label": row["mili_label"].strip(),
+                "bandcamp_page": row["bandcamp_url"].strip(),
+                "item_title": release["title"],
+                "item_artist": release["artist"],
+                "item_url": release["url"],
+                "item_type": release["type"],
+                "bandcamp_id": release["bandcamp_id"],
+                "found_in": release["found_in"],
+                "fetched_at": fetched_at,
+            }, ensure_ascii=False) + "\n")
+        total += len(releases)
+        print(f"   {len(releases)} releases" if releases else
+              "   no releases found in the page. Send me this file so I can check it.")
+    return total
+
+
 def main():
     parser = argparse.ArgumentParser(description="Read each label's Bandcamp page.")
     parser.add_argument("--label", action="append", default=[],
                         help="only this mili label (can be used several times)")
+    parser.add_argument("--from-folder", default=None,
+                        help="read pages you saved from your browser in this folder, instead of downloading")
     args = parser.parse_args()
+
+    if args.from_folder:
+        seed_rows = read_seed()
+        run_dir = RAW_ROOT / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        run_dir.mkdir(parents=True, exist_ok=True)
+        print(f"Reading saved Bandcamp pages from {args.from_folder}\n")
+        with open(run_dir / "items.jsonl", "w", encoding="utf-8") as out:
+            total = read_saved_pages(args.from_folder, seed_rows, run_dir, out)
+        print(f"\nDone. {total} releases saved to {(run_dir / 'items.jsonl').relative_to(PROJECT_ROOT)}")
+        return
 
     labels = read_seed()
     if args.label:
@@ -151,6 +249,11 @@ def main():
                 continue
             if response.status_code != 200:
                 print(f"   Bandcamp answered {response.status_code}, skipping")
+                continue
+
+            if "Client Challenge" in response.text[:3000]:
+                print("   Bandcamp answered with its 'Client Challenge' page (it blocks automated "
+                      "downloads).\n   Save the page from your browser instead and use --from-folder.")
                 continue
 
             # Save the page untouched (the raw layer), named after its address,
