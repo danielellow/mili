@@ -8,6 +8,15 @@
 --   title_search    Discogs search by artist + title. Stricter, because there's
 --                   no barcode: artist >= 0.90 and title >= 0.92.
 --
+-- Collaborations: Discogs names every artist ("No Rome, Charli XCX & The 1975"),
+-- while we compare with MusicBrainz's main artist ("No Rome"). So the artist
+-- also counts as matching when the main artist is one of the names Discogs
+-- lists (artist_listed). The full MusicBrainz credit ("Bill Callahan & Bonnie
+-- 'Prince' Billy") is compared too.
+--
+-- Split releases: Discogs titles them "Evacuate / Body Count", so each side of
+-- the "/" is also compared with the MusicBrainz title.
+--
 -- Discogs search results name releases "Artist - Title", and sometimes add a
 -- number to tell artists apart ("Burial (2)") or a * for a name variation
 -- ("Burial*"); we split and clean that.
@@ -56,9 +65,10 @@ candidates as (
         l.status,
         c,
         regexp_extract(c ->> '$.title', '^(.*?) - (.*)$', 2) as discogs_title,
-        -- "Burial (2)" -> "Burial", "Burial*" -> "Burial"
+        -- "Burial (2)" -> "Burial", "Burial*" -> "Burial", also inside
+        -- several names: "Torres (2) & Fruit Bats" -> "Torres & Fruit Bats"
         regexp_replace(
-            regexp_extract(c ->> '$.title', '^(.*?) - (.*)$', 1), '\s*(\(\d+\)|\*)$', ''
+            regexp_extract(c ->> '$.title', '^(.*?) - (.*)$', 1), '\s*\(\d+\)|\*', '', 'g'
         ) as discogs_artist
     from latest l,
         unnest(json_extract(l.response, '$.results[*]')) as t(c)
@@ -81,12 +91,41 @@ scored as (
         try_cast(x.c ->> '$.community.want' as integer) as want,
         greatest(
             jaro_winkler_similarity({{ normalize_title('w.title') }}, {{ normalize_title('x.discogs_title') }}),
-            jaro_winkler_similarity({{ core_title('w.title') }}, {{ core_title('x.discogs_title') }})
+            jaro_winkler_similarity({{ core_title('w.title') }}, {{ core_title('x.discogs_title') }}),
+            -- each side of a split release: "Evacuate / Body Count"
+            list_max(list_transform(
+                regexp_split_to_array(x.discogs_title, '\s*/\s*'),
+                lambda part: jaro_winkler_similarity({{ core_title('w.title') }}, {{ core_title('part') }})
+            ))
         ) as title_similarity,
-        jaro_winkler_similarity(
-            {{ normalize_artist("w.release_group_json ->> '$.artist-credit[0].name'") }},
-            {{ normalize_artist('x.discogs_artist') }}
+        greatest(
+            jaro_winkler_similarity(
+                {{ normalize_artist("w.release_group_json ->> '$.artist-credit[0].name'") }},
+                {{ normalize_artist('x.discogs_artist') }}
+            ),
+            jaro_winkler_similarity(
+                {{ normalize_artist('w.artist_credit') }},
+                {{ normalize_artist('x.discogs_artist') }}
+            )
         ) as artist_similarity,
+        -- the main artist is one of the artists Discogs lists: Discogs' names are
+        -- split at ", " and at " & ", " / ", " + ", " : ", " x ", " feat. ",
+        -- " vs. ", " with " (with spaces, so "A+A" or "AC/DC" stay whole),
+        -- and compared word for word
+        -- ("&" and "and" are left out, so "& the" and "And The" compare the same)
+        list_contains(
+            list_transform(
+                regexp_split_to_array(
+                    x.discogs_artist,
+                    '\s*,\s*|\s+(&|/|\+|:|[xX]|(?i:feat\.?|featuring|ft\.|vs\.?|with))\s+'
+                ),
+                lambda name: trim(regexp_replace({{ normalize_title('name') }}, '\s*\band\b\s*', ' ', 'g'))
+            ),
+            trim(regexp_replace(
+                {{ normalize_title("w.release_group_json ->> '$.artist-credit[0].name'") }},
+                '\s*\band\b\s*', ' ', 'g'
+            ))
+        ) as artist_listed,
         (
             length({{ normalize_title('w.title') }}) >= 3
             and (
@@ -109,7 +148,8 @@ judged as (
                 when 'barcode_search'
                     then title_similarity >= 0.85 or coalesce(title_contained, false)
                 when 'title_search'
-                    then artist_similarity >= 0.90 and title_similarity >= 0.92
+                    then (artist_similarity >= 0.90 or coalesce(artist_listed, false))
+                         and title_similarity >= 0.92
             end,
             false
         ) as is_accepted
@@ -174,6 +214,7 @@ select
     a.discogs_artist,
     round(a.title_similarity, 3) as title_similarity,
     round(a.artist_similarity, 3) as artist_similarity,
+    a.artist_listed,
     a.have,           -- Discogs users who own it
     a.want,           -- Discogs users who want it
     a.is_accepted
