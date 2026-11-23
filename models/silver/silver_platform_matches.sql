@@ -45,7 +45,15 @@ answers as (
         end as platform_artist,
         case platform
             when 'deezer' then response ->> '$.upc'
-        end as platform_barcode
+        end as platform_barcode,
+        -- the release date the platform shows: "2020-01-01" (Apple adds a time,
+        -- Spotify sometimes only has "2020"). Deezer writes "0000-00-00" when it
+        -- doesn't know, which we treat as empty.
+        nullif(nullif(left(case platform
+            when 'deezer'  then response ->> '$.release_date'
+            when 'spotify' then response ->> '$.albums.items[0].release_date'
+            when 'apple'   then response ->> '$.results[0].releaseDate'
+        end, 10), ''), '0000-00-00') as platform_release_date
     from newest
     where newest_first = 1
 
@@ -98,6 +106,7 @@ select
     platform_title,
     mb_artist,
     platform_artist,
+    platform_release_date,
     matched_on,
     round(title_similarity, 3) as title_similarity,
     coalesce(title_contained, false) as title_contained,

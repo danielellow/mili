@@ -46,7 +46,28 @@ release_lookups as (
         try_cast(response ->> '$.id' as bigint) as release_id,
         nullif(try_cast(response ->> '$.master_id' as bigint), 0) as master_id,
         response ->> '$.title' as discogs_title,
-        response ->> '$.artists_sort' as discogs_artist,
+        -- The artist as credited on this edition, built from Discogs' list of
+        -- artists: the name as printed on the release ("anv") when there is one,
+        -- without Discogs' numbering ("Burial (2)"), joined by "&", "Feat." ...
+        -- (Not "artists_sort", which writes "Sea And Cake, The".)
+        coalesce(
+            nullif(array_to_string(
+                list_transform(
+                    json_extract(response, '$.artists[*]'),
+                    lambda a:
+                        regexp_replace(
+                            coalesce(nullif(a ->> '$.anv', ''), a ->> '$.name'), '\s*\(\d+\)$', ''
+                        )
+                        || case
+                            when coalesce(a ->> '$.join', '') in ('', ',') then coalesce(a ->> '$.join', '')
+                            else ' ' || (a ->> '$.join')
+                        end
+                ),
+                ' '
+            ), ''),
+            response ->> '$.artists_sort'
+        ) as discogs_artist,
+        nullif(try_cast(response ->> '$.year' as integer), 0) as discogs_year,
         try_cast(response ->> '$.community.have' as integer) as have,
         try_cast(response ->> '$.community.want' as integer) as want,
         null::double as title_similarity,
@@ -87,6 +108,7 @@ scored as (
         nullif(try_cast(x.c ->> '$.master_id' as bigint), 0) as master_id,
         x.discogs_title,
         x.discogs_artist,
+        nullif(try_cast(x.c ->> '$.year' as integer), 0) as discogs_year,
         try_cast(x.c ->> '$.community.have' as integer) as have,
         try_cast(x.c ->> '$.community.want' as integer) as want,
         greatest(
@@ -184,6 +206,7 @@ not_found as (
         work_id, method, status,
         null::bigint as release_id, null::bigint as master_id,
         null::varchar as discogs_title, null::varchar as discogs_artist,
+        null::integer as discogs_year,
         null::integer as have, null::integer as want,
         null::double as title_similarity, null::double as artist_similarity,
         false as is_accepted
@@ -212,6 +235,7 @@ select
     w.title as mb_title,
     a.discogs_title,
     a.discogs_artist,
+    a.discogs_year,   -- the year of the edition we found (often a reissue, not the first release)
     round(a.title_similarity, 3) as title_similarity,
     round(a.artist_similarity, 3) as artist_similarity,
     a.artist_listed,

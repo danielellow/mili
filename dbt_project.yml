@@ -16,6 +16,10 @@ test-paths: ["tests"]
 vars:
   # where the Python scripts save the raw files
   raw_dir: "data/raw"
+  # A release on a label's Bandcamp page that matches no MusicBrainz work, but
+  # whose title is at least this similar to one, waits for a decision instead
+  # of becoming an object of its own (see silver_bandcamp_unmatched)
+  bandcamp_uncertain_from: 0.85
 
 models:
   mili:
@@ -36,6 +40,8 @@ seeds:
         listen: boolean
         buy: boolean
         default_order: integer
+        # false = only for DJ mixes (Mixcloud), never as a release link
+        for_releases: boolean
     platform_domains:
       +column_types:
         domain: varchar
@@ -44,4 +50,16 @@ seeds:
       +column_types:
         mili_label: varchar
         bandcamp_url: varchar
+        notes: varchar
+    match_confidence:
+      +column_types:
+        method: varchar
+        confidence: double
+        how_the_match_was_made: varchar
+    mixes:
+      +column_types:
+        mix_url: varchar
+        title: varchar
+        artist: varchar
+        artwork_url: varchar
         notes: varchar

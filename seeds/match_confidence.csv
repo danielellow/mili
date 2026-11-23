@@ -1,0 +1,11 @@
+method,confidence,how_the_match_was_made
+origin,1.00,"The record the object was born from (its MusicBrainz work, its Bandcamp page, or the mix you added)"
+musicbrainz,0.95,A link MusicBrainz editors added to the work or one of its editions
+barcode_exact,0.95,"The platform found the exact barcode we asked for"
+discogs_release_lookup,0.95,"The Discogs edition MusicBrainz links, looked up to find its main page"
+bandcamp_page,0.90,"On the label's own Bandcamp page, with a close artist and title (or an almost exact title)"
+odesli,0.85,"Odesli (song.link) found the same release from a link we already had, and the title passed a check"
+discogs_barcode_search,0.85,"Discogs search by barcode, and the title is similar"
+barcode_other,0.80,"The platform answered with a different barcode, but the title is similar"
+title_search,0.80,"Deezer search by artist and title, both close"
+discogs_title_search,0.80,"Discogs search by artist and title, both close"

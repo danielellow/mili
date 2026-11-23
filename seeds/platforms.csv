@@ -1,16 +1,16 @@
-platform_id,display_name,listen,buy,default_order
-apple_music,Apple Music,true,false,1
-youtube,YouTube,true,false,2
-youtube_music,YouTube Music,true,false,3
-tidal,Tidal,true,false,4
-qobuz,Qobuz,true,false,5
-deezer,Deezer,true,false,6
-spotify,Spotify,true,false,7
-soundcloud,SoundCloud,true,false,8
-mixcloud,Mixcloud,true,false,9
-amazon_music,Amazon Music,true,false,10
-nts,NTS,true,false,11
-beatport,Beatport,true,false,12
-bandcamp,Bandcamp,true,true,13
-pandora,Pandora,true,false,14
-discogs,Discogs,false,true,
+platform_id,display_name,listen,buy,default_order,for_releases
+apple_music,Apple Music,true,false,1,true
+youtube,YouTube,true,false,2,true
+youtube_music,YouTube Music,true,false,3,true
+tidal,Tidal,true,false,4,true
+qobuz,Qobuz,true,false,5,true
+deezer,Deezer,true,false,6,true
+spotify,Spotify,true,false,7,true
+soundcloud,SoundCloud,true,false,8,true
+mixcloud,Mixcloud,true,false,9,false
+amazon_music,Amazon Music,true,false,10,true
+nts,NTS,true,false,11,true
+beatport,Beatport,true,false,12,true
+bandcamp,Bandcamp,true,true,13,true
+pandora,Pandora,true,false,14,true
+discogs,Discogs,false,true,,true

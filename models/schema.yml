@@ -150,18 +150,178 @@ models:
                 values: ['master', 'release', 'search']
 
   - name: gold_buy_options
-    description: What the app's "buy" menu shows for each work, Bandcamp (when we have a link) and Discogs (always), in menu order.
+    description: What the app's "buy" menu shows for each object, Bandcamp (when we have a link) and Discogs (always, for releases), in menu order. Mixes have none.
     columns:
       - name: buy_option_id
         data_tests: [unique, not_null]
       - name: url
         data_tests: [not_null]
+      - name: object_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_objects')
+                field: object_id
       - name: work_id
         data_tests:
           - relationships:
               arguments:
                 to: ref('gold_works')
                 field: work_id
+
+  - name: silver_bandcamp_unmatched
+    description: Releases on the labels' Bandcamp pages that aren't linked to any MusicBrainz work, decided as bandcamp_only (becomes an object) or uncertain (waits for a decision).
+    columns:
+      - name: url_key
+        data_tests: [unique, not_null]
+      - name: decision
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['bandcamp_only', 'uncertain']
+
+  - name: silver_mixes
+    description: The mixes added by hand in seeds/mixes.csv, with the platform of each link.
+    columns:
+      - name: url_key
+        data_tests: [unique, not_null]
+
+  - name: gold_objects
+    description: One row per mili object, with mili's own ID. Objects come from MusicBrainz works, Bandcamp-only releases and mixes added by hand.
+    columns:
+      - name: object_id
+        data_tests: [unique, not_null]
+      - name: born_from
+        data_tests: [unique, not_null]
+      - name: work_id
+        data_tests: [unique]
+      - name: kind
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['release', 'mix']
+      - name: identity_source
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['musicbrainz', 'bandcamp_page', 'added_by_hand']
+
+  - name: gold_object_labels
+    description: Which objects belong to which mili label.
+    columns:
+      - name: object_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_objects')
+                field: object_id
+      - name: mili_label
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('labels')
+                field: mili_label
+
+  - name: gold_object_instances
+    description: Every place an object lives, one row per object and link. The app reads this; gold_instances stays keyed by MusicBrainz work for the lookup scripts.
+    columns:
+      - name: instance_id
+        data_tests: [unique, not_null]
+      - name: confidence
+        data_tests: [not_null]
+      - name: version_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_object_versions')
+                field: version_id
+      - name: object_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_objects')
+                field: object_id
+      - name: platform_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('platforms')
+                field: platform_id
+
+  - name: silver_link_versions
+    description: Which version of a work each link is (standard, Deluxe Version, Remastered ...), read from the title the platform shows.
+
+  - name: gold_object_versions
+    description: The versions of each object ("Wind", "Wind (Deluxe Version)"), with which one the page shows first (is_main).
+    columns:
+      - name: version_id
+        data_tests: [unique, not_null]
+      - name: object_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_objects')
+                field: object_id
+
+  - name: gold_listen_options
+    description: The row of listen links on a release or mix page, one link per platform, in the platforms seed's order.
+    columns:
+      - name: listen_option_id
+        data_tests: [unique, not_null]
+      - name: object_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_objects')
+                field: object_id
+
+  - name: gold_object_summary
+    description: Per label, how many objects come from MusicBrainz, how many only from the label's Bandcamp page, and how many Bandcamp releases wait for a decision.
+
+  - name: gold_claims
+    description: One row per fact (title, artist, release date) per source about an object, with where it came from and a confidence. Disagreeing claims sit side by side.
+    columns:
+      - name: claim_id
+        data_tests: [unique, not_null]
+      - name: object_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_objects')
+                field: object_id
+      - name: predicate
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['title', 'artist', 'release_date', 'uploaded_by']
+      - name: scope
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['work', 'platform', 'edition']
+      - name: confidence
+        description: Empty would mean a match method is missing from seeds/match_confidence.csv.
+        data_tests: [not_null]
+
+  - name: gold_claim_comparisons
+    description: Every claim from another source compared with MusicBrainz (same, only brackets differ, one contains the other, different; same year, later, earlier; or who uploaded it).
+    columns:
+      - name: claim_id
+        data_tests: [unique, not_null]
+
+  - name: gold_claim_summary
+    description: Per label, fact and source, how often the source agrees with MusicBrainz. The "(all labels)" rows are the totals.
+
+  - name: gold_upload_summary
+    description: Who uploaded the releases on YouTube, YouTube Music and SoundCloud (the artist, the label, YouTube's automatic channels, or someone else), per label and platform.
 
   - name: gold_label_works
     description: Which works belong to which mili label.
@@ -177,10 +337,13 @@ models:
                 field: work_id
 
   - name: gold_instances
-    description: Each place a work lives on one of our platforms, from MusicBrainz links, accepted barcode lookups, accepted Deezer title searches, the labels' own Bandcamp pages, Odesli and Discogs lookups.
+    description: Each place a work lives on one of our platforms, from MusicBrainz links, accepted barcode lookups, accepted Deezer title searches, the labels' own Bandcamp pages, Odesli and Discogs lookups, with how it was matched and a confidence from 0 to 1.
     columns:
       - name: instance_id
         data_tests: [unique, not_null]
+      - name: confidence
+        description: Empty would mean a match method is missing from seeds/match_confidence.csv.
+        data_tests: [not_null]
       - name: work_id
         data_tests:
           - relationships:
@@ -206,7 +369,7 @@ seeds:
         data_tests: [unique, not_null]
 
   - name: platforms
-    description: The platforms mili links to, in the default display order.
+    description: The platforms mili links to, in the default display order. for_releases = false marks platforms that are only for DJ mixes (Mixcloud).
     columns:
       - name: platform_id
         data_tests: [unique, not_null]
@@ -223,6 +386,20 @@ seeds:
               arguments:
                 to: ref('labels')
                 field: mili_label
+
+  - name: match_confidence
+    description: Each way of matching a source to a work, with how sure we are of it (0 to 1). A first suggestion, to adjust using the precision check.
+    columns:
+      - name: method
+        data_tests: [unique, not_null]
+      - name: confidence
+        data_tests: [not_null]
+
+  - name: mixes
+    description: Mixes added by hand (NTS, Mixcloud ...), each with its link, title, DJ or show, and artwork. Each becomes a mili object.
+    columns:
+      - name: mix_url
+        data_tests: [unique, not_null]
 
   - name: platform_domains
     description: Web domains used to recognise each platform in a link.

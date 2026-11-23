@@ -99,17 +99,9 @@ discogs_choice as (
             when lk.master_id is not null then 'https://www.discogs.com/master/' || lk.master_id
             when mb.discogs_page_type = 'release' then mb.url
             when lk.release_id is not null then 'https://www.discogs.com/release/' || lk.release_id
-            else 'https://www.discogs.com/search/?q='
-                || url_encode(regexp_replace(
-                    -- "Various Artists" only gets in the way of a search
-                    case
-                        when {{ normalize_artist("g.release_group_json ->> '$.artist-credit[0].name'") }} = 'various artists'
-                            then g.title
-                        else concat_ws(' ', g.release_group_json ->> '$.artist-credit[0].name', g.title)
-                    end,
-                    '\p{Cf}', '', 'g'      -- invisible characters some names carry
-                ))
-                || '&type=all'
+            -- (the search link is built by a macro in macros/object_helpers.sql,
+            -- because gold_buy_options makes the same kind of link)
+            else {{ discogs_search_url("g.release_group_json ->> '$.artist-credit[0].name'", 'g.title') }}
         end as discogs_url,
         lk.have as discogs_have,
         lk.want as discogs_want

@@ -39,4 +39,5 @@ cross join {{ ref('platforms') }} p
 left join linked l
     on l.mili_label = t.mili_label
     and l.platform_id = p.platform_id
+where p.for_releases      -- Mixcloud is only for DJ mixes
 order by t.mili_label, p.default_order nulls last
