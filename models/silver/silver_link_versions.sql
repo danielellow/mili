@@ -17,19 +17,22 @@
 --   3. Brackets that only describe the upload are ignored: a year on its own,
 --      "Full Album", "Official Audio", "EP", "Single (Version)", "Explicit",
 --      sound formats ("24 Bit"), YouTube's "Topic", a label's name
---      ("International Anthem"), catalogue numbers ("IA11") and artist
---      credits ("feat. Loraine James").
+--      ("International Anthem"), catalogue numbers ("IA11", also "IA11 Version"),
+--      artist credits ("feat. Loraine James"), formats on their own ("Vinyl",
+--      "CD"), soundtrack descriptions ("Original Motion Picture Soundtrack")
+--      and brackets with only numbers or symbols ("~37").
 --   4. No version text = the standard version (version_key '').
 --
 -- maybe_another_release: a version called live, remix(es), rework, demo(s),
--- instrumental(s), dub or karaoke is usually a work of its own, not a version.
+-- instrumental(s), acoustic, dub or karaoke is usually a work of its own, not
+-- a version.
 -- If one turns up here, the link was probably matched to the wrong work (one
 -- title contains the other). These links are kept, but marked, so the page can
 -- leave them out and the AI judge can look at them.
 --
 -- version_key makes different wordings of the same version equal, so
 -- "Deluxe Version" and "Deluxe Edition" are one version ("deluxe"), and
--- "Remastered" and "Remaster" are one too ("remaster").
+-- "Remastered", "Remaster" and "Digitally Remastered" are one too ("remaster").
 
 with link_titles as (
 
@@ -133,11 +136,11 @@ parts as (
                 -- not a description of the upload
                 and not regexp_matches(
                     {{ normalize_title('p') }},
-                    '^(\d{4}|album|ep|lp|single|single version|hd|hq|audio|explicit|clean|mixed|topic)$'
+                    '^(\d+|album|ep|lp|single|single version|hd|hq|audio|explicit|clean|mixed|topic|vinyl|cd|cassette|tape|digital)$'
                 )
                 and not regexp_matches(
                     {{ normalize_title('p') }},
-                    'full (album|ep|lp)|official|lyric|visuali|stream'
+                    'full (album|ep|lp)|official|lyric|visuali|stream|soundtrack|original (motion picture|score|television|cast)|music from the (motion picture|film)|\bost\b'
                 )
                 -- not an artist credit: "feat. Loraine James", "with Sam Gendel"
                 and not regexp_matches({{ normalize_title('p') }}, '^(feat|featuring|ft|with|prod|produced by)\b')
@@ -147,7 +150,10 @@ parts as (
                 -- "WARP 30", "AD93-011"), but "Vol. 2" or "Part 1" stay, since those
                 -- name another work
                 and not (
-                    regexp_matches({{ normalize_title('p') }}, '^[a-z]{1,6}\d{0,3} ?\d{1,5}[a-z]?$')
+                    regexp_matches(
+                        trim(regexp_replace({{ normalize_title('p') }}, '\s*\b(edition|version|ed)\b\s*', ' ', 'g')),
+                        '^[a-z]{1,6}\d{0,3} ?\d{1,5}[a-z]?$'
+                    )
                     and not regexp_matches({{ normalize_title('p') }}, '^(vol|volume|part|pt|no|chapter|book|act|op)\b')
                 )
         ) as all_parts
@@ -180,7 +186,7 @@ select
                 lambda p: trim(regexp_replace(
                     regexp_replace(
                         regexp_replace({{ normalize_title('p') }}, 'remastered', 'remaster', 'g'),
-                        '\b(edition|version|ed|the)\b', ' ', 'g'
+                        '\b(edition|version|ed|the|digitally)\b', ' ', 'g'
                     ),
                     '\s+', ' ', 'g'
                 ))
@@ -193,7 +199,7 @@ select
         version_parts,
         lambda p: regexp_matches(
             {{ normalize_title('p') }},
-            '\b(live|remix|remixes|remixed|rework|reworks|reworked|demo|demos|instrumental|instrumentals|dub|dubs|karaoke|acapella|a cappella)\b'
+            '\b(live|remix|remixes|remixed|rework|reworks|reworked|demo|demos|instrumental|instrumentals|acoustic|dub|dubs|karaoke|acapella|a cappella)\b'
         )
     )), false) as maybe_another_release
 from versions

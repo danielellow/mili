@@ -27,12 +27,15 @@ with wordings as (
 best_wording as (
 
     -- the most common wording: "Deluxe Version" rather than "Deluxe Edition"
-    -- (alphabetical when it's a tie, so it's the same on every run)
+    -- (when it's a tie, the shorter one, then alphabetical, so it's the same on
+    -- every run: "Remastered" rather than "Digitally Remastered")
     select version_id, version_label
     from (
         select
             *,
-            row_number() over (partition by version_id order by uses desc, version_label) as preference
+            row_number() over (
+                partition by version_id order by uses desc, length(version_label), version_label
+            ) as preference
         from wordings
     )
     where preference = 1
