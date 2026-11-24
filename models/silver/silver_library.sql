@@ -16,8 +16,11 @@
 --   2. otherwise by artist and title, cleaned the same way as everywhere else.
 --      If several objects match, the one on most platforms is picked, and the
 --      row says so in check_note, so you can add a link to choose.
--- Rows that aren't found keep object_id empty, with a note. The library can only
--- hold releases from the 20 labels (and your mixes) for now.
+-- Rows that aren't found keep object_id empty, with a note.
+--
+-- Your Bandcamp collection is added too (silver_bandcamp_collection): everything
+-- you bought, dated by when you bought it, and your wishlist as the queue.
+-- Those rows already know their object, so they don't need matching here.
 
 with rows as (
 
@@ -105,9 +108,12 @@ by_name as (
     where r.title is not null
       and r.artist is not null
 
-)
+),
 
-select
+from_file as (
+
+    -- the rows from seeds/library.csv
+    select
     r.row_id,
     r.link,
     r.artist,
@@ -133,3 +139,31 @@ left join by_link bl
 left join by_name bn
     on bn.row_id = r.row_id
     and bn.preference = 1
+
+),
+
+from_bandcamp as (
+
+    select
+        md5('bandcamp|' || c.bandcamp_id) as row_id,
+        c.url as link,
+        c.artist,
+        c.title,
+        c.added_at::date as added_on,
+        case c.list when 'wishlist' then 'queue' else 'collection' end as status,
+        []::varchar[] as collages,
+        'from your Bandcamp collection' as note,
+        o.object_id,
+        'bandcamp_collection' as found_by,
+        null::varchar as check_note
+    from {{ ref('silver_bandcamp_collection') }} c
+    join {{ ref('gold_objects') }} o
+        on (c.decision = 'matched_work' and o.work_id = c.work_id)
+        or (c.decision = 'matched_bandcamp_page' and o.born_from = c.bandcamp_page_born_from)
+        or (c.decision = 'new' and o.born_from = c.born_from)
+
+)
+
+select * from from_file
+union all by name
+select * from from_bandcamp

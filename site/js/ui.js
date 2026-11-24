@@ -40,7 +40,10 @@ export function cover(obj, size = "large") {
     (obj.title || "?").trim().charAt(0).toUpperCase(),
   );
   if (!obj.cover) return placeholder;
-  const src = size === "small" ? obj.cover.replace(/front-500$/, "front-250") : obj.cover;
+  // smaller images for lists: the Cover Art Archive's 250px, Bandcamp's 210px
+  const src = size === "small"
+    ? obj.cover.replace(/front-500$/, "front-250").replace(/_16\.jpg$/, "_9.jpg")
+    : obj.cover;
   const img = h("img", { class: `cover ${size}`, src, alt: "", loading: "lazy" });
   img.addEventListener("error", () => img.replaceWith(placeholder));
   return img;

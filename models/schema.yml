@@ -84,6 +84,20 @@ models:
   - name: gold_title_search_summary
     description: How the Deezer title search went, split by whether the work has a barcode.
 
+  - name: bronze_bandcamp_collection
+    description: Every item on your saved Bandcamp collection page, as read by ingest/read_bandcamp_collection.py.
+
+  - name: silver_bandcamp_collection
+    description: Your Bandcamp collection (newest saved page, without hidden items), each item matched to a MusicBrainz work, a Bandcamp-only object, or new.
+    columns:
+      - name: bandcamp_id
+        data_tests: [unique, not_null]
+      - name: decision
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['matched_work', 'matched_bandcamp_page', 'new']
+
   - name: bronze_apple_title_search
     description: Every answer from the Apple Music artist + title search, as saved by ingest/search_apple_by_title.py.
     columns:
@@ -217,7 +231,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['musicbrainz', 'bandcamp_page', 'added_by_hand']
+                values: ['musicbrainz', 'bandcamp_page', 'added_by_hand', 'bandcamp_collection']
 
   - name: gold_object_labels
     description: Which objects belong to which mili label.
@@ -306,7 +320,7 @@ models:
                 values: ['bandcamp_and_streaming', 'streaming_only', 'bandcamp_only', 'elsewhere', 'nowhere']
 
   - name: silver_library
-    description: Your library (seeds/library.csv), each row matched to a mili object by link or by artist and title. Rows not found have an empty object_id and a check_note.
+    description: Your library (seeds/library.csv and your Bandcamp collection), each row matched to a mili object. Rows from the file that aren't found have an empty object_id and a check_note.
     columns:
       - name: status
         data_tests:

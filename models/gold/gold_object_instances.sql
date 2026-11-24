@@ -69,6 +69,27 @@ from_mixes as (
 
 ),
 
+from_collection as (
+
+    -- the Bandcamp page of something from your collection that mili didn't know yet
+    select
+        o.object_id,
+        'bandcamp' as platform_id,
+        c.url,
+        'bandcamp_collection' as sources,
+        'origin' as methods,
+        1.0::double as confidence,
+        null::varchar as relation_types,
+        0::bigint as editions_linked,
+        true as linked_at_album_level
+    from {{ ref('silver_bandcamp_collection') }} c
+    join {{ ref('gold_objects') }} o
+        on o.born_from = c.born_from
+    where c.decision = 'new'
+      and c.url is not null
+
+),
+
 all_instances as (
 
     select * from from_works
@@ -76,6 +97,8 @@ all_instances as (
     select * from from_bandcamp
     union all by name
     select * from from_mixes
+    union all by name
+    select * from from_collection
 
 ),
 
