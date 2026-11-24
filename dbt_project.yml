@@ -56,6 +56,15 @@ seeds:
         method: varchar
         confidence: double
         how_the_match_was_made: varchar
+    library:
+      +column_types:
+        link: varchar
+        artist: varchar
+        title: varchar
+        added_on: varchar
+        status: varchar
+        collages: varchar
+        note: varchar
     mixes:
       +column_types:
         mix_url: varchar

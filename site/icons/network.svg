@@ -1,0 +1,39 @@
+<svg width="76" height="76" viewBox="0 0 76 76" fill="none" xmlns="http://www.w3.org/2000/svg">
+<circle cx="3" cy="38" r="3" fill="black"/>
+<circle cx="38" cy="3" r="3" fill="black"/>
+<circle cx="38" cy="10" r="3" fill="black"/>
+<circle cx="38" cy="17" r="3" fill="black"/>
+<circle cx="38" cy="24" r="3" fill="black"/>
+<circle cx="38" cy="31" r="3" fill="black"/>
+<circle cx="10" cy="38" r="3" fill="black"/>
+<circle cx="17" cy="38" r="3" fill="black"/>
+<circle cx="24" cy="38" r="3" fill="black"/>
+<circle cx="31" cy="38" r="3" fill="black"/>
+<circle cx="38" cy="38" r="3" fill="black"/>
+<circle cx="45" cy="38" r="3" fill="black"/>
+<circle cx="52" cy="38" r="3" fill="black"/>
+<circle cx="59" cy="38" r="3" fill="black"/>
+<circle cx="66" cy="38" r="3" fill="black"/>
+<circle cx="73" cy="38" r="3" fill="black"/>
+<circle cx="38" cy="45" r="3" fill="black"/>
+<circle cx="38" cy="52" r="3" fill="black"/>
+<circle cx="3" cy="3" r="3" transform="matrix(1 0 0 -1 35 76)" fill="black"/>
+<circle cx="3" cy="3" r="3" transform="matrix(1 0 0 -1 35 69)" fill="black"/>
+<circle cx="3" cy="3" r="3" transform="matrix(1 0 0 -1 35 62)" fill="black"/>
+<circle cx="31" cy="31" r="3" fill="black"/>
+<circle cx="45" cy="31" r="3" fill="black"/>
+<circle cx="31" cy="45" r="3" fill="black"/>
+<circle cx="45" cy="45" r="3" fill="black"/>
+<circle cx="3" cy="3" r="3" transform="matrix(1 0 0 -1 0 76)" fill="black"/>
+<circle cx="3" cy="3" r="3" transform="matrix(1 0 0 -1 70 76)" fill="black"/>
+<circle cx="3" cy="3" r="3" fill="black"/>
+<circle cx="17" cy="17" r="3" fill="black"/>
+<circle cx="59" cy="17" r="3" fill="black"/>
+<circle cx="3" cy="3" r="3" transform="matrix(1 0 0 -1 14 62)" fill="black"/>
+<circle cx="3" cy="3" r="3" transform="matrix(1 0 0 -1 56 62)" fill="black"/>
+<circle cx="24" cy="24" r="3" fill="black"/>
+<circle cx="52" cy="24" r="3" fill="black"/>
+<circle cx="24" cy="52" r="3" fill="black"/>
+<circle cx="52" cy="52" r="3" fill="black"/>
+<circle cx="73" cy="3" r="3" fill="black"/>
+</svg>

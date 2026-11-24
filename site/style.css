@@ -1,0 +1,192 @@
+/* mili: the look. Dark, like the release page sketch: titles in a plain
+   sans-serif, links and small print in a monospace font. */
+
+:root {
+  --bg: #0b0b0a;
+  --panel: #131311;
+  --line: #2b2a26;
+  --text: #ece8df;
+  --dim: #8d8980;
+  --faint: #5a574f;
+  --accent: #d8a23f;        /* the atlas's orange */
+  --focus: #d43bb5;         /* selection */
+  --bandcamp: #58b7c9;
+
+  --sans: "Helvetica Neue", Helvetica, Inter, system-ui, sans-serif;
+  --mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+a:hover { color: #fff; }
+code { font-family: var(--mono); font-size: 0.95em; color: var(--dim); }
+h1 { font-weight: 500; font-size: 2.1rem; margin: 0 0 0.3rem; letter-spacing: -0.01em; }
+h2 { font-family: var(--mono); font-weight: 400; font-size: 0.8rem; letter-spacing: 0.08em;
+     text-transform: uppercase; color: var(--dim); margin: 2.6rem 0 0.8rem; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.muted { color: var(--faint); }
+
+/* ---- top bar ---------------------------------------------------------- */
+
+.top {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 2rem;
+  padding: 0.9rem 2rem;
+  background: rgba(11, 11, 10, 0.92);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+}
+.brand { display: inline-flex; align-items: center; gap: 0.55rem; font-size: 1.15rem; letter-spacing: 0.02em; }
+.brand .logo { width: 20px; height: 20px; color: var(--accent); }
+.menu-button { display: none; color: var(--dim); }
+nav { display: flex; gap: 1.4rem; font-size: 0.9rem; color: var(--dim); }
+nav a.on { color: var(--text); border-bottom: 1px solid var(--accent); }
+#find {
+  margin-left: auto; width: min(26rem, 40vw);
+  background: transparent; color: var(--text);
+  border: 0; border-bottom: 1px solid var(--line);
+  font: inherit; font-size: 0.95rem; padding: 0.35rem 0;
+  outline: none;
+}
+#find:focus { border-bottom-color: var(--accent); }
+#find::placeholder { color: var(--faint); }
+
+/* ---- pages ------------------------------------------------------------ */
+
+main { min-height: 70vh; }
+.page { max-width: 72rem; margin: 0 auto; padding: 2.5rem 2rem 4rem; }
+.loading, .empty { font-family: var(--mono); color: var(--dim); padding: 3rem 2rem; text-align: center; }
+.count, .meta, .versions { font-family: var(--mono); font-size: 0.88rem; color: var(--dim); }
+.intro { font-size: 1.25rem; line-height: 1.5; max-width: 46rem; color: var(--dim); }
+
+/* ---- release page ----------------------------------------------------- */
+
+.release { display: grid; grid-template-columns: 15rem 1fr; gap: 2.2rem; align-items: start; }
+.release-main { min-width: 0; }
+.release h1 { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
+
+.badge {
+  font-family: var(--mono); font-size: 0.72rem; font-weight: 400;
+  color: var(--dim); border: 1px solid var(--line); border-radius: 999px;
+  padding: 0.15em 0.7em; letter-spacing: 0.02em; vertical-align: middle;
+}
+.row .badge { font-size: 0.65rem; margin-left: 0.5rem; }
+
+.byline { font-size: 1.2rem; color: var(--dim); margin-bottom: 1.1rem; }
+.byline .label { color: var(--text); }
+.byline a:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+.row .byline { font-size: 0.9rem; margin: 0.15rem 0 0; }
+
+.links { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.55rem 1.6rem;
+         font-family: var(--mono); font-size: 1rem; line-height: 1.7; }
+.link:hover { color: var(--accent); }
+.version { color: var(--faint); font-size: 0.78em; margin-left: 0.4em; }
+.bracket { color: var(--dim); }
+.bracket:hover { color: var(--text); }
+.bracket.muted, .bracket.muted:hover { color: var(--faint); cursor: default; }
+
+.buy { position: relative; }
+.menu {
+  position: absolute; top: 1.9rem; left: -0.4rem; z-index: 5;
+  display: flex; flex-direction: column; gap: 0.6rem;
+  min-width: 11rem; padding: 1rem 1.3rem;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+}
+.menu[hidden] { display: none; }
+.menu a { color: var(--dim); }
+.menu a:hover { color: var(--text); }
+
+.actions { display: flex; gap: 1.1rem; margin-top: 1.3rem; }
+.act { color: var(--faint); width: 24px; height: 24px; display: inline-flex; }
+a.act:hover { color: var(--text); }
+.act.on { color: var(--accent); }
+/* Daniel's dot icons: the SVG file is a stencil, the colour comes from the text */
+.mi {
+  display: inline-block; width: 24px; height: 24px; flex: none; vertical-align: middle;
+  background-color: currentColor;
+  -webkit-mask: var(--src) center / contain no-repeat;
+          mask: var(--src) center / contain no-repeat;
+}
+.mi.small { width: 13px; height: 13px; margin-right: 0.45rem; position: relative; top: -1px; }
+
+/* ---- covers ----------------------------------------------------------- */
+
+.cover { display: block; object-fit: cover; background: var(--panel); border: 1px solid var(--line); }
+.cover.large { width: 15rem; height: 15rem; }
+.cover.small { width: 3rem; height: 3rem; flex: none; }
+.cover.placeholder {
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); color: hsl(var(--hue) 30% 70%);
+  background: hsl(var(--hue) 22% 14%);
+}
+.cover.placeholder.large { font-size: 4rem; }
+.cover.placeholder.small { font-size: 1.1rem; }
+
+/* ---- lists ------------------------------------------------------------ */
+
+.list { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.row {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0.55rem 0.4rem; border-bottom: 1px solid var(--line);
+}
+.row:hover { background: var(--panel); }
+.row-text { min-width: 0; flex: 1; }
+.row-title { font-size: 1.02rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-meta { display: flex; align-items: center; gap: 0.9rem; font-family: var(--mono);
+            font-size: 0.78rem; color: var(--faint); }
+.status.queue { color: var(--dim); }
+.status.collection { color: var(--accent); }
+
+.labels { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.2rem 2rem;
+          font-family: var(--mono); }
+.labels a { display: flex; justify-content: space-between; padding: 0.45rem 0; border-bottom: 1px solid var(--line); }
+.labels .n { color: var(--faint); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0 1.6rem; font-family: var(--mono); font-size: 0.85rem; }
+.chip { border: 1px solid var(--line); padding: 0.3rem 0.8rem; color: var(--dim); }
+.chip.on { border-color: var(--accent); color: var(--text); }
+.chip.collage { border-style: dashed; }
+
+/* ---- where it can be heard -------------------------------------------- */
+
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; vertical-align: middle; }
+.dot.bandcamp_and_streaming, .seg.bandcamp_and_streaming { background: var(--text); }
+.dot.streaming_only, .seg.streaming_only { background: var(--dim); }
+.dot.bandcamp_only, .seg.bandcamp_only { background: var(--bandcamp); }
+.dot.elsewhere { border: 1px solid var(--dim); }
+.dot.nowhere { border: 1px dashed var(--faint); }
+.seg.elsewhere { background: var(--faint); }
+.seg.nowhere { background: repeating-linear-gradient(90deg, var(--line) 0 3px, transparent 3px 6px); }
+
+.bar { display: flex; height: 8px; gap: 2px; margin: 1rem 0 0.6rem; }
+.dot-key { display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem; font-family: var(--mono); font-size: 0.78rem;
+           color: var(--dim); margin-bottom: 1.6rem; }
+.dot-key .dot { margin-right: 0.45rem; }
+
+/* ---- footer ----------------------------------------------------------- */
+
+.foot { display: flex; flex-wrap: wrap; gap: 0.4rem 2rem; padding: 1.6rem 2rem 2.4rem;
+        border-top: 1px solid var(--line); font-family: var(--mono); font-size: 0.75rem; color: var(--faint); }
+
+/* ---- small screens ---------------------------------------------------- */
+
+@media (max-width: 720px) {
+  .top { flex-wrap: wrap; gap: 0.8rem 1.4rem; padding: 0.8rem 1rem; }
+  .menu-button { display: inline-flex; margin-left: auto; }
+  nav { display: none; width: 100%; flex-direction: column; gap: 0.7rem; padding: 0.4rem 0; }
+  body.nav-open nav { display: flex; }
+  #find { width: 100%; margin: 0; }
+  .page { padding: 1.6rem 1rem 3rem; }
+  .release { grid-template-columns: 1fr; }
+  .cover.large { width: 100%; height: auto; aspect-ratio: 1; }
+}

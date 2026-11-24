@@ -7,6 +7,8 @@
 --                   and that passed the match check in silver_platform_matches
 --   title_search    Deezer links found by searching artist + title, that passed
 --                   the stricter check in silver_deezer_title_matches
+--   apple_title_search  Apple Music links found by searching artist + title, with
+--                   the same strict check (silver_apple_title_matches)
 --   bandcamp_page   releases listed on the label's own Bandcamp page, matched
 --                   to a work in silver_bandcamp_label_matches
 --   odesli          links from Odesli (song.link), starting from one link we
@@ -73,6 +75,23 @@ title_search_links as (
         'title_search' as source,
         'title_search' as method
     from {{ ref('silver_deezer_title_matches') }}
+    where is_accepted
+      and url is not null
+
+),
+
+apple_title_search_links as (
+
+    select
+        work_id,
+        'apple_music' as platform_id,
+        url,
+        null::varchar as relation_type,
+        null::varchar as release_id,
+        'album' as level,
+        'apple_title_search' as source,
+        'apple_title_search' as method
+    from {{ ref('silver_apple_title_matches') }}
     where is_accepted
       and url is not null
 
@@ -151,6 +170,8 @@ all_links as (
     select * from lookup_links
     union all
     select * from title_search_links
+    union all
+    select * from apple_title_search_links
     union all
     select * from bandcamp_page_links
     union all

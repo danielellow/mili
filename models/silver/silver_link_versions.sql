@@ -49,6 +49,12 @@ with link_titles as (
 
     union all
 
+    select work_id, url, apple_title as title, 'apple_title_search' as method
+    from {{ ref('silver_apple_title_matches') }}
+    where is_accepted and url is not null
+
+    union all
+
     select work_id, url, platform_title as title, 'odesli' as method
     from {{ ref('silver_odesli_links') }}
     where is_accepted

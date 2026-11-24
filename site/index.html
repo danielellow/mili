@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mili</title>
+  <meta name="description" content="mili (milieu): a music library outside any platform.">
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="#/"><span class="mi logo" style="--src:url(icons/logomark.svg)" aria-hidden="true"></span>mili</a>
+    <button id="menu-button" class="menu-button" aria-label="menu"><span class="mi" style="--src:url(icons/menu.svg)" aria-hidden="true"></span></button>
+    <nav>
+      <a href="#/" data-page="home">catalogue</a>
+      <a href="#/library" data-page="library">library</a>
+      <a href="#/atlas" data-page="atlas">atlas</a>
+      <a href="#/garden" data-page="garden">garden</a>
+    </nav>
+    <input id="find" type="search" placeholder="find title, artist or label…" autocomplete="off" spellcheck="false">
+  </header>
+  <main id="view"></main>
+  <footer class="foot" id="foot"></footer>
+</body>
+</html>

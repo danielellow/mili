@@ -34,6 +34,34 @@
     )
 {% endmacro %}
 
+{#
+  link_match_key: a key that stays the same for different ways of writing a
+  link to the same release, so a link pasted from the browser can be matched
+  to a link we found:
+      "https://open.spotify.com/intl-de/album/4aB?si=x"  and
+      "https://open.spotify.com/album/4aB"               ->  "spotify.com/4aB"
+      "https://music.apple.com/gb/album/wind/1611"      and
+      "https://music.apple.com/album/1611"              ->  "apple.com/1611"
+      "https://www.discogs.com/master/9-Gigi-Masin-Wind" ->  "discogs/master/9"
+  Most platforms: the site's main domain plus the last part of the address
+  (the release's ID on that platform). Bandcamp, YouTube, SoundCloud, Mixcloud
+  and NTS: the whole cleaned link, because there the address itself is the name.
+#}
+{% macro link_match_key(column) %}
+    case
+        when regexp_matches(lower({{ column }}), 'discogs\.com/[^/]*/?(master|release)/\d+')
+            then 'discogs/' || regexp_extract(lower({{ column }}), '(master|release)/(\d+)', 1)
+                 || '/' || regexp_extract(lower({{ column }}), '(master|release)/(\d+)', 2)
+        when regexp_matches(lower({{ column }}), 'musicbrainz\.org/(release-group|release)/[0-9a-f-]{36}')
+            then 'musicbrainz/' || regexp_extract(lower({{ column }}), '(release-group|release)/([0-9a-f-]{36})', 1)
+                 || '/' || regexp_extract(lower({{ column }}), '(release-group|release)/([0-9a-f-]{36})', 2)
+        when regexp_matches(lower({{ column }}), 'bandcamp\.com|youtube\.com|youtu\.be|soundcloud\.com|mixcloud\.com|nts\.live')
+            then {{ normalize_url(column) }}
+        else regexp_extract(regexp_extract({{ normalize_url(column) }}, '^([^/]+)', 1), '([^.]+\.[^.]+)$', 1)
+             || '/' || regexp_extract({{ normalize_url(column) }}, '([^/]+)$', 1)
+    end
+{% endmacro %}
+
 {% macro mili_id(column) %}
     left(sha256({{ column }}), 12)
 {% endmacro %}
@@ -49,4 +77,18 @@
             '\p{Cf}', '', 'g'      -- invisible characters some names carry
         ))
         || '&type=all'
+{% endmacro %}
+
+{#
+  raw_files_exist: true if at least one raw file matches the pattern. A bronze
+  model can use it to stay empty (instead of failing) before its script has
+  ever been run, so `dbt build` works in any order.
+#}
+{% macro raw_files_exist(pattern) %}
+    {% if execute %}
+        {% set result = run_query("select count(*) from glob('" ~ pattern ~ "')") %}
+        {{ return(result.columns[0].values()[0] > 0) }}
+    {% else %}
+        {{ return(true) }}
+    {% endif %}
 {% endmacro %}

@@ -84,6 +84,18 @@ models:
   - name: gold_title_search_summary
     description: How the Deezer title search went, split by whether the work has a barcode.
 
+  - name: bronze_apple_title_search
+    description: Every answer from the Apple Music artist + title search, as saved by ingest/search_apple_by_title.py.
+    columns:
+      - name: work_id
+        data_tests: [not_null]
+
+  - name: silver_apple_title_matches
+    description: Best Apple Music candidate per searched work, accepted only if both artist and title match closely.
+    columns:
+      - name: work_id
+        data_tests: [unique, not_null]
+
   - name: bronze_bandcamp_label_items
     description: Every release listed on the labels' own Bandcamp pages, as saved by the page script.
     columns:
@@ -282,6 +294,38 @@ models:
                 to: ref('gold_objects')
                 field: object_id
 
+  - name: gold_site_objects
+    description: One row per object with everything the website shows (labels, artist IDs, genres, availability, listen links, buy menu, versions). export/export_site_data.py writes it as JSON.
+    columns:
+      - name: id
+        data_tests: [unique, not_null]
+      - name: availability
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['bandcamp_and_streaming', 'streaming_only', 'bandcamp_only', 'elsewhere', 'nowhere']
+
+  - name: silver_library
+    description: Your library (seeds/library.csv), each row matched to a mili object by link or by artist and title. Rows not found have an empty object_id and a check_note.
+    columns:
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['collection', 'queue']
+
+  - name: gold_library
+    description: Your library, one row per object, with when it was added, collection or queue, and your collages.
+    columns:
+      - name: object_id
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_objects')
+                field: object_id
+
   - name: gold_object_summary
     description: Per label, how many objects come from MusicBrainz, how many only from the label's Bandcamp page, and how many Bandcamp releases wait for a decision.
 
@@ -394,6 +438,9 @@ seeds:
         data_tests: [unique, not_null]
       - name: confidence
         data_tests: [not_null]
+
+  - name: library
+    description: Your library, one release or mix per row, pointed to by a link or by artist and title (see silver_library).
 
   - name: mixes
     description: Mixes added by hand (NTS, Mixcloud ...), each with its link, title, DJ or show, and artwork. Each becomes a mili object.

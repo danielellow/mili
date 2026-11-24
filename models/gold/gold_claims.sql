@@ -26,6 +26,7 @@
 --   musicbrainz        the work itself (first release date of the album)
 --   barcode lookups    Apple, Deezer, Spotify: title, artist, release date
 --   Deezer search      title, artist (Deezer's search answers have no date)
+--   Apple search       title, artist, release date
 --   Odesli             title and artist on each platform it found (no dates);
 --                      uploaded_by instead of artist on YouTube, YouTube Music and
 --                      SoundCloud. Platforms only for DJ mixes (Mixcloud) are left out.
@@ -94,6 +95,21 @@ work_records as (
         null::varchar as uploaded_by,
         fetched_at
     from {{ ref('silver_deezer_title_matches') }}
+    where is_accepted
+
+    union all
+
+    select
+        work_id,
+        'apple_music' as source,
+        'apple_title_search' as method,
+        'platform' as scope,
+        apple_title as title,
+        apple_artist as artist,
+        apple_release_date as release_date,
+        null::varchar as uploaded_by,
+        fetched_at
+    from {{ ref('silver_apple_title_matches') }}
     where is_accepted
 
     union all

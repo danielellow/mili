@@ -1,0 +1,113 @@
+-- GOLD (for the website): one row per object with everything the app shows,
+-- ready to be written as JSON by export/export_site_data.py.
+--
+--   id, kind, title, artist, type, year, labels, cover, genres
+--   artist_ids     MusicBrainz IDs of every artist in the credit, so "same
+--                  artist" also finds collaborations ("Kode9 & The Spaceape"
+--                  relates to both Kode9 and The Spaceape)
+--   availability   where it can be heard: bandcamp_and_streaming,
+--                  streaming_only, bandcamp_only, or elsewhere (only YouTube,
+--                  SoundCloud ...), or nowhere (no listen links)
+--   listen         the row of listen links, in the platforms' order
+--   buy            the buy menu (Bandcamp, Discogs)
+--   versions       the versions page section ("2 versions · Wind (Deluxe Version)")
+--
+-- Only open data goes to the website: the release facts come from MusicBrainz
+-- (or the label's own Bandcamp page, or the mix you added), plus links.
+-- Titles and dates the platforms gave us (gold_claims) stay in the analysis.
+
+with labels as (
+
+    select object_id, list(mili_label order by mili_label) as labels
+    from {{ ref('gold_object_labels') }}
+    group by 1
+
+),
+
+artists as (
+
+    select
+        release_group_id as work_id,
+        list_distinct(list_filter(
+            json_extract_string(release_group_json, '$.artist-credit[*].artist.id'),
+            lambda a: a is not null
+        )) as artist_ids
+    from {{ ref('silver_mb_release_groups') }}
+
+),
+
+listen as (
+
+    select
+        object_id,
+        list(
+            {'platform': platform_id, 'name': display_name, 'url': url, 'version': version_label}
+            order by menu_order
+        ) as listen,
+        bool_or(platform_id = 'bandcamp') as on_bandcamp,
+        -- the subscription streaming services (not YouTube or SoundCloud uploads)
+        bool_or(platform_id in (
+            'apple_music', 'youtube_music', 'tidal', 'qobuz', 'deezer',
+            'spotify', 'amazon_music', 'pandora'
+        )) as on_streaming
+    from {{ ref('gold_listen_options') }}
+    group by 1
+
+),
+
+buy as (
+
+    select
+        object_id,
+        list(
+            {'platform': platform_id, 'name': display_name, 'url': url, 'kind': link_kind}
+            order by menu_order
+        ) as buy
+    from {{ ref('gold_buy_options') }}
+    group by 1
+
+),
+
+versions as (
+
+    select
+        object_id,
+        list(
+            {'title': display_title, 'label': version_label, 'platforms': platforms, 'main': is_main}
+            order by is_main desc, platforms desc, display_title
+        ) as versions,
+        count(*) as versions_total
+    from {{ ref('gold_object_versions') }}
+    where not maybe_another_release
+    group by 1
+
+)
+
+select
+    o.object_id as id,
+    o.kind,                                         -- release or mix
+    o.title,
+    o.artist_credit as artist,
+    coalesce(a.artist_ids, []::varchar[]) as artist_ids,
+    o.work_type as type,                            -- album, ep, single ... or empty
+    o.first_release_year as year,
+    coalesce(lb.labels, []::varchar[]) as labels,
+    o.cover_url as cover,
+    coalesce(string_split(o.top_genres, ', '), []::varchar[]) as genres,
+    case
+        when li.object_id is null then 'nowhere'
+        when li.on_bandcamp and li.on_streaming then 'bandcamp_and_streaming'
+        when li.on_streaming then 'streaming_only'
+        when li.on_bandcamp then 'bandcamp_only'
+        else 'elsewhere'
+    end as availability,
+    coalesce(v.versions_total, 0) as versions_total,
+    coalesce(li.listen, []) as listen,
+    coalesce(b.buy, []) as buy,
+    coalesce(v.versions, []) as versions
+from {{ ref('gold_objects') }} o
+left join labels lb on lb.object_id = o.object_id
+left join artists a on a.work_id = o.work_id
+left join listen li on li.object_id = o.object_id
+left join buy b on b.object_id = o.object_id
+left join versions v on v.object_id = o.object_id

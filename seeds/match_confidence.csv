@@ -8,4 +8,5 @@ odesli,0.85,"Odesli (song.link) found the same release from a link we already ha
 discogs_barcode_search,0.85,"Discogs search by barcode, and the title is similar"
 barcode_other,0.80,"The platform answered with a different barcode, but the title is similar"
 title_search,0.80,"Deezer search by artist and title, both close"
+apple_title_search,0.80,"Apple Music search by artist and title, both close"
 discogs_title_search,0.80,"Discogs search by artist and title, both close"
