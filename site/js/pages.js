@@ -2,6 +2,7 @@
 
 import { data, getObject, search, sameArtist, water, inRotation } from "./data.js";
 import { h, mi, cover, byline, list, row, dotKey, availabilityText, availabilityDot } from "./ui.js";
+import { readTheme, saveTheme, DEFAULT_ACCENT } from "./theme.js";
 
 const byYearNewest = (a, b) => (b.year || 0) - (a.year || 0) || a.title.localeCompare(b.title);
 
@@ -10,36 +11,60 @@ const byYearNewest = (a, b) => (b.year || 0) - (a.year || 0) || a.title.localeCo
 // ---------------------------------------------------------------------------
 
 export function home(query) {
-  if (query) {
-    const { total, results } = search(query);
-    return h(
-      "section",
-      { class: "page" },
+  const releases = data.index.filter((o) => o.kind === "release").length;
+  const results = h("div", { class: "results" });
+
+  // results under the search box, updated as you type (the box keeps its focus)
+  function showResults(q) {
+    if (!q) {
+      results.replaceChildren(overview());
+      return;
+    }
+    const { total, results: found } = search(q);
+    results.replaceChildren(
       h("p", { class: "count" },
-        total === 0 ? `Nothing found for “${query}”.`
-          : total > results.length ? `${total.toLocaleString("en")} found · showing the first ${results.length}`
+        total === 0 ? `Nothing found for “${q}”.`
+          : total > found.length ? `${total.toLocaleString("en")} found · showing the first ${found.length}`
             : `${total.toLocaleString("en")} found`),
-      list(results, ""),
+      list(found, ""),
     );
   }
 
-  const releases = data.index.filter((o) => o.kind === "release").length;
-  const recent = data.library.items.slice(0, 8).map((i) => data.byId.get(i.id)).filter(Boolean);
-  return h(
-    "section",
-    { class: "page home" },
-    h("p", { class: "intro" },
-      `A music library outside any platform. ${releases.toLocaleString("en")} releases from ${data.labels.length} labels, `,
-      "each one an object that points to everywhere it can be heard or bought."),
-    recent.length ? h("h2", {}, "Recently added to the library") : null,
-    recent.length ? list(recent) : null,
-    recent.length ? h("p", {}, h("a", { href: "#/library" }, `the whole library (${data.library.items.length}) →`)) : null,
-    h("h2", {}, "Labels"),
-    h("div", { class: "labels" },
-      data.labels.map((label) =>
-        h("a", { href: `#/label/${encodeURIComponent(label)}` },
-          label, h("span", { class: "n" }, data.byLabel.get(label).length.toLocaleString("en"))))),
-  );
+  let typing;
+  const box = h("input", {
+    class: "search",
+    type: "search",
+    placeholder: "find title, artist or label…",
+    autocomplete: "off",
+    spellcheck: "false",
+    value: query,
+    oninput: (event) => {
+      clearTimeout(typing);
+      typing = setTimeout(() => {
+        const q = event.target.value.trim();
+        history.replaceState(null, "", q ? `#/?q=${encodeURIComponent(q)}` : "#/");
+        showResults(q);
+      }, 120);
+    },
+  });
+  setTimeout(() => box.focus(), 0);
+
+  function overview() {
+    const recent = data.library.items.slice(0, 8).map((i) => data.byId.get(i.id)).filter(Boolean);
+    return h("div", {},
+      h("p", { class: "intro" },
+        `A music library outside any platform. ${releases.toLocaleString("en")} releases, `,
+        "each one an object that points to everywhere it can be heard or bought."),
+      recent.length ? h("h2", {}, "Recently added to the library") : null,
+      recent.length ? list(recent) : null,
+      recent.length ? h("p", { class: "count" }, h("a", { href: "#/library" }, `the whole library (${data.library.items.length}) →`)) : null,
+      h("h2", {}, "Labels"),
+      labelGrid(),
+    );
+  }
+
+  showResults(query);
+  return h("section", { class: "page home" }, box, results);
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +257,78 @@ export function library(params) {
       ? h("div", { class: "list" },
         items.map((i) => row(data.byId.get(i.id), h("span", { class: "added" }, i.added_on || ""))))
       : h("p", { class: "empty" }, "The library is empty. Add releases to seeds/library.csv and run the export again."),
+  );
+}
+
+// The labels as a grid of pictures. Uses labels.json (your order, with
+// pictures) when the export has it, otherwise the label names A to Z.
+function labelGrid() {
+  const labels = data.labelInfo.length
+    ? data.labelInfo.filter((l) => data.byLabel.has(l.name))
+    : data.labels.map((name) => ({ name, image: null }));
+  return h("div", { class: "label-grid" },
+    labels.map((label) => {
+      const count = data.byLabel.get(label.name)?.length || 0;
+      const letter = h("span", { class: "label-letter" }, label.name.replace(/^the /i, "").charAt(0).toUpperCase());
+      const picture = label.image
+        ? h("img", {
+          src: label.image,
+          alt: "",
+          loading: "lazy",
+          // if the picture can't be loaded, show the first letter instead
+          onerror: (event) => event.target.replaceWith(letter),
+        })
+        : letter;
+      return h("a", {
+        class: "label-tile",
+        href: `#/label/${encodeURIComponent(label.name)}`,
+        title: `${label.name} · ${count.toLocaleString("en")} releases`,
+      },
+      h("span", { class: "label-picture" }, picture),
+      h("span", { class: "label-name" }, label.name));
+    }));
+}
+
+// ---------------------------------------------------------------------------
+// Settings: dark or light, and the accent colour (kept in this browser)
+// ---------------------------------------------------------------------------
+
+export function settings() {
+  const theme = readTheme();
+  const toggle = h("button", {
+    "aria-pressed": String(theme.dark),
+    "aria-label": "dark mode",
+    onclick: () => {
+      theme.dark = !theme.dark;
+      toggle.setAttribute("aria-pressed", String(theme.dark));
+      saveTheme(theme);
+    },
+  });
+  const picker = h("input", { type: "color", value: theme.accent, "aria-label": "accent colour" });
+  const hex = h("input", { type: "text", value: theme.accent, spellcheck: "false", "aria-label": "accent colour as hex" });
+  const setAccent = (value) => {
+    if (!/^#[0-9a-f]{6}$/i.test(value)) return;
+    theme.accent = value.toLowerCase();
+    picker.value = theme.accent;
+    hex.value = theme.accent;
+    saveTheme(theme);
+  };
+  picker.addEventListener("input", () => setAccent(picker.value));
+  hex.addEventListener("change", () => setAccent(hex.value.trim()));
+
+  return h(
+    "section",
+    { class: "page" },
+    h("h1", {}, "settings"),
+    h("div", { class: "setting-group" },
+      h("h3", {}, "global", h("small", {}, "appearance · theme · accent")),
+      h("div", { class: "toggle" }, toggle, "dark mode"),
+      h("p", { class: "help" }, "The accent worn by lit library glyphs and the active filter chip."),
+      h("div", { class: "accent-row" },
+        picker, hex,
+        h("button", { class: "plain-button", onclick: () => setAccent(DEFAULT_ACCENT) }, "reset to default")),
+      h("div", { class: "preview" }, "preview", mi("collect"), h("span", { class: "chip on" }, "active"))),
+    h("p", { class: "meta" }, "These are kept in this browser."),
   );
 }
 

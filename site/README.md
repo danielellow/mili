@@ -27,5 +27,7 @@ Then open http://localhost:8000 in the browser. Stop the server with Ctrl+C.
 - `js/app.js`: starts the app and picks the page from the address (`#/release/…`)
 - `js/data.js`: loads `data/` and searches it
 - `js/ui.js`: small shared pieces (covers, rows, the coloured dots)
-- `js/pages.js`: the pages: home and search, release, artist, label, library
+- `js/pages.js`: the pages: home and search, release, artist, label, library, settings
+- `js/atlas.js`: the atlas (one object in the middle, three rings of things related to it)
+- `js/theme.js`: dark or light, and the accent colour, kept in this browser
 - `icons/`: the dot icons and the logomark (`favicon.svg` is the logomark in orange, for the browser tab)

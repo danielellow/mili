@@ -6,6 +6,7 @@
 //                      characters of the mili ID
 //   library.json       Daniel's library: items and collages
 //   platforms.json     the platforms and their order
+//   labels.json        the labels, in Daniel's order, with their pictures
 //   meta.json          counts and where the data comes from
 
 const cache = new Map();          // objects/<xx>.json files already loaded
@@ -16,6 +17,7 @@ export const data = {
   byArtist: new Map(),            // MusicBrainz artist ID -> objects
   byLabel: new Map(),             // label name -> objects
   labels: [],                     // label names, A to Z
+  labelInfo: [],                  // the labels with pictures, from labels.json
   library: { items: [], collages: [] },
   inLibrary: new Map(),           // mili ID -> library item (added_on, status, collages)
   platforms: [],
@@ -39,17 +41,19 @@ export function normalize(text) {
 }
 
 export async function loadAll() {
-  const [index, library, platforms, meta] = await Promise.all([
+  const [index, library, platforms, meta, labelInfo] = await Promise.all([
     getJson("data/index.json"),
     getJson("data/library.json").catch(() => ({ items: [], collages: [] })),
     getJson("data/platforms.json"),
     getJson("data/meta.json"),
+    getJson("data/labels.json").catch(() => []),
   ]);
 
   data.index = index;
   data.library = library;
   data.platforms = platforms;
   data.meta = meta;
+  data.labelInfo = labelInfo;
 
   for (const obj of index) {
     data.byId.set(obj.id, obj);

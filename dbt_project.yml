@@ -51,6 +51,15 @@ seeds:
         mili_label: varchar
         bandcamp_url: varchar
         notes: varchar
+    # Your own picture for a label on the front page (optional), and your own
+    # order (position 1, 2, 3 …). image is a web address, or a file in the
+    # site folder such as images/labels/4ad.png
+    label_artwork:
+      +column_types:
+        mili_label: varchar
+        image: varchar
+        position: integer
+        notes: varchar
     match_confidence:
       +column_types:
         method: varchar

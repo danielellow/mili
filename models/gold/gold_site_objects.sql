@@ -5,6 +5,9 @@
 --   artist_ids     MusicBrainz IDs of every artist in the credit, so "same
 --                  artist" also finds collaborations ("Kode9 & The Spaceape"
 --                  relates to both Kode9 and The Spaceape)
+--   bandcamp_page  the Bandcamp account the release is sold from ("ad93", "swirlpeople"):
+--                  a label's or an artist's page. The atlas uses it to connect things
+--                  from the same small label or artist that MusicBrainz doesn't know.
 --   availability   where it can be heard: bandcamp_and_streaming,
 --                  streaming_only, bandcamp_only, or elsewhere (only YouTube,
 --                  SoundCloud ...), or nowhere (no listen links)
@@ -45,6 +48,13 @@ listen as (
             order by menu_order
         ) as listen,
         bool_or(platform_id = 'bandcamp') as on_bandcamp,
+        -- "https://ad93.bandcamp.com/album/haw" -> "ad93" (a custom domain stays whole)
+        max(case when platform_id = 'bandcamp' then
+            coalesce(
+                nullif(regexp_extract(url, '^https?://([^./]+)\.bandcamp\.com', 1), ''),
+                regexp_replace(lower(regexp_extract(url, '^https?://([^/:?#]+)', 1)), '^www\.', '')
+            )
+        end) as bandcamp_page,
         -- the subscription streaming services (not YouTube or SoundCloud uploads)
         bool_or(platform_id in (
             'apple_music', 'youtube_music', 'tidal', 'qobuz', 'deezer',
@@ -94,6 +104,7 @@ select
     coalesce(lb.labels, []::varchar[]) as labels,
     o.cover_url as cover,
     coalesce(string_split(o.top_genres, ', '), []::varchar[]) as genres,
+    li.bandcamp_page,
     case
         when li.object_id is null then 'nowhere'
         when li.on_bandcamp and li.on_streaming then 'bandcamp_and_streaming'

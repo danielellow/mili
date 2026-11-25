@@ -47,7 +47,7 @@ OUT_DIR = PROJECT_ROOT / "site" / "data"
 # the fields that go into index.json (the release pages get all of them)
 INDEX_FIELDS = [
     "id", "kind", "title", "artist", "artist_ids", "type", "year",
-    "labels", "cover", "genres", "availability", "versions_total",
+    "labels", "cover", "genres", "availability", "versions_total", "bandcamp_page",
 ]
 
 SOURCES = [
@@ -95,6 +95,10 @@ def main():
             from gold_library
             order by added_on desc nulls last, object_id
         """)
+        labels = read_table(con, """
+            select label as name, slug, image, bandcamp_url as page, objects
+            from gold_labels
+        """)
         platforms = read_table(con, """
             select platform_id as id, display_name as name, listen, buy, for_releases, default_order
             from platforms
@@ -130,8 +134,9 @@ def main():
         "collages": [{"name": name, "items": ids} for name, ids in sorted(collages.items())],
     }, args.pretty)
 
-    # 4. platforms.json
+    # 4. platforms.json and labels.json (the labels in your order, with their pictures)
     write_json(OUT_DIR / "platforms.json", platforms, args.pretty)
+    write_json(OUT_DIR / "labels.json", labels, args.pretty)
 
     # 5. meta.json
     kinds = defaultdict(int)
@@ -154,6 +159,8 @@ def main():
     objects_size = sum(p.stat().st_size for p in (OUT_DIR / "objects").glob("*.json"))
     print(f"  objects/          {len(chunks)} files, {objects_size / 1_000_000:.1f} MB in all")
     print(f"  library.json      {len(library)} items, {len(collages)} collages")
+    with_pictures = sum(1 for label in labels if label["image"])
+    print(f"  labels.json       {len(labels)} labels, {with_pictures} with a picture")
     print(f"  platforms.json, meta.json")
     print("By kind:", ", ".join(f"{k} {v:,}" for k, v in sorted(kinds.items())))
     print("Where they can be heard:", ", ".join(f"{k} {v:,}" for k, v in sorted(availability.items())))

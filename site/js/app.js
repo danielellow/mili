@@ -1,21 +1,27 @@
 // mili: starting the app, and choosing the page from the address.
 //
 // The part of the address after "#" says which page to show:
-//   #/                     home (and search: #/?q=wind)
+//   #/                     the catalogue, with search (#/?q=wind)
 //   #/release/<mili ID>    a release or mix
 //   #/artist/<artist ID>   everything by one artist
 //   #/label/<name>         everything on one label
 //   #/library              the library (?show=queue, ?collage=late%20night)
 //   #/atlas/<mili ID>      the atlas, centred on one object
 //   #/garden               the garden
+//   #/settings             dark or light, accent colour
 // Because it's all after "#", the site is just files: no server is needed.
 
 import { data, loadAll } from "./data.js";
 import { h } from "./ui.js";
+import { applyTheme } from "./theme.js";
 import * as pages from "./pages.js";
+import { atlas, walkBack } from "./atlas.js";
+
+applyTheme();     // before anything is drawn, so there's no flash of the wrong theme
 
 const view = document.getElementById("view");
-const find = document.getElementById("find");
+const menu = document.getElementById("menu");
+const menuButton = document.getElementById("menu-button");
 
 function parseAddress() {
   const [path, query] = (location.hash.slice(1) || "/").split("?");
@@ -28,9 +34,13 @@ function parseAddress() {
 async function show() {
   const { parts, params } = parseAddress();
   const [page, arg] = parts;
-  document.body.dataset.page = page || "home";
-  for (const a of document.querySelectorAll("nav a")) {
-    a.classList.toggle("on", a.dataset.page === (page || "home"));
+  const name = page || "home";
+  document.body.dataset.page = name;
+
+  // light up the icon for this page
+  const current = name === "library" && params.get("show") === "queue" ? "queue" : name;
+  for (const a of document.querySelectorAll(".iconbar a")) {
+    a.classList.toggle("on", a.dataset.page === current);
   }
 
   let content;
@@ -40,41 +50,44 @@ async function show() {
     else if (page === "artist") content = pages.artist(arg);
     else if (page === "label") content = pages.label(arg);
     else if (page === "library") content = pages.library(params);
-    else if (page === "atlas") content = pages.comingSoon("Atlas");
+    else if (page === "atlas") content = atlas(arg);
     else if (page === "garden") content = pages.comingSoon("Garden");
+    else if (page === "settings") content = pages.settings();
     else content = pages.notFound("This page doesn't exist.");
   } catch (error) {
     console.error(error);
     content = pages.notFound(`Something went wrong: ${error.message}`);
   }
   view.replaceChildren(content);
-  if (page !== undefined || !params.get("q")) window.scrollTo(0, 0);
-  if (page) find.value = "";
+  window.scrollTo(0, 0);
 }
 
-// Typing in the search box shows results on the home page as you type.
-let typing;
-find.addEventListener("input", () => {
-  clearTimeout(typing);
-  typing = setTimeout(() => {
-    const q = find.value.trim();
-    const target = q ? `#/?q=${encodeURIComponent(q)}` : "#/";
-    if (parseAddress().parts.length === 0) history.replaceState(null, "", target);
-    else history.pushState(null, "", target);
-    show();
-  }, 120);
-});
-
-// A click anywhere closes open menus (like [buy]) and, on a phone, the page menu.
-document.addEventListener("click", () => {
-  for (const menu of document.querySelectorAll(".menu")) menu.hidden = true;
-  document.body.classList.remove("nav-open");
-});
-
-// On a phone, the menu icon opens and closes the list of pages.
-document.getElementById("menu-button").addEventListener("click", (event) => {
+// The menu on the right opens and closes; a click anywhere else closes it,
+// and closes small menus like [buy].
+menuButton.addEventListener("click", (event) => {
   event.stopPropagation();
-  document.body.classList.toggle("nav-open");
+  menu.hidden = !menu.hidden;
+  menuButton.setAttribute("aria-expanded", String(!menu.hidden));
+});
+document.addEventListener("click", () => {
+  for (const m of document.querySelectorAll(".menu")) m.hidden = true;
+  menu.hidden = true;
+  menuButton.setAttribute("aria-expanded", "false");
+});
+
+// Keys in the atlas (not while typing in a box).
+document.addEventListener("keydown", (event) => {
+  if (document.body.dataset.page !== "atlas") return;
+  if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
+  const map = view.querySelector(".atlas");
+  if (!map) return;
+  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter"].includes(event.key)) {
+    event.preventDefault();
+    map.moveSelection(event.key);
+  } else if (event.key === "Backspace") {
+    event.preventDefault();
+    walkBack();
+  }
 });
 
 window.addEventListener("hashchange", show);
@@ -89,8 +102,6 @@ async function start() {
       "If you opened index.html straight from the folder, start a small local server instead: see site/README.md."));
     return;
   }
-  const { params } = parseAddress();
-  if (params.get("q")) find.value = params.get("q");
   document.getElementById("foot").replaceChildren(
     h("span", {}, `${data.index.length.toLocaleString("en")} objects · data from ${data.meta.exported_at?.slice(0, 10) || "?"}`),
     ...(data.meta.sources || []).map((s) => h("span", {}, s)),

@@ -2,3 +2,4 @@ requests
 python-dotenv
 dbt-duckdb
 beautifulsoup4
+psycopg[binary]
