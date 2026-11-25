@@ -215,7 +215,6 @@ a.act:hover { color: var(--text); }
 
 /* ---- atlas ------------------------------------------------------------ */
 
-body[data-page="atlas"] .foot { display: none; }
 .atlas { position: relative; height: calc(100vh - 66px); min-height: 560px; overflow: hidden; font-family: var(--mono); }
 .atlas svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .atlas .ring { fill: none; stroke: var(--line); stroke-width: 1; }
@@ -275,11 +274,6 @@ body[data-page="atlas"] .foot { display: none; }
 .atlas-key .k.filled { background: var(--text); }
 .atlas-key .k.outside { background: var(--faint); border: 0; }
 .atlas-key .k.box { border-radius: 0; border-color: var(--accent); }
-
-/* ---- footer ----------------------------------------------------------- */
-
-.foot { display: flex; flex-wrap: wrap; gap: 0.4rem 2rem; padding: 2rem 2.2rem 2.6rem;
-        border-top: 1px solid var(--line); font-family: var(--mono); font-size: 0.75rem; color: var(--faint); }
 
 /* ---- small screens ---------------------------------------------------- */
 

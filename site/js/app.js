@@ -102,10 +102,6 @@ async function start() {
       "If you opened index.html straight from the folder, start a small local server instead: see site/README.md."));
     return;
   }
-  document.getElementById("foot").replaceChildren(
-    h("span", {}, `${data.index.length.toLocaleString("en")} objects · data from ${data.meta.exported_at?.slice(0, 10) || "?"}`),
-    ...(data.meta.sources || []).map((s) => h("span", {}, s)),
-  );
   show();
 }
 

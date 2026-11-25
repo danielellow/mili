@@ -11,7 +11,6 @@ const byYearNewest = (a, b) => (b.year || 0) - (a.year || 0) || a.title.localeCo
 // ---------------------------------------------------------------------------
 
 export function home(query) {
-  const releases = data.index.filter((o) => o.kind === "release").length;
   const results = h("div", { class: "results" });
 
   // results under the search box, updated as you type (the box keeps its focus)
@@ -67,9 +66,6 @@ export function home(query) {
   function overview() {
     const recent = data.library.items.slice(0, 8).map((i) => data.byId.get(i.id)).filter(Boolean);
     return h("div", {},
-      h("p", { class: "intro" },
-        `A music library outside any platform. ${releases.toLocaleString("en")} releases, `,
-        "each one an object that points to everywhere it can be heard or bought."),
       recent.length ? h("h2", {}, "Recently added to the library") : null,
       recent.length ? list(recent) : null,
       recent.length ? h("p", { class: "count" }, h("a", { href: "#/library" }, `the whole library (${data.library.items.length}) →`)) : null,
@@ -344,6 +340,11 @@ export function settings() {
         h("button", { class: "plain-button", onclick: () => setAccent(DEFAULT_ACCENT) }, "reset to default")),
       h("div", { class: "preview" }, "preview", mi("collect"), h("span", { class: "chip on" }, "active"))),
     h("p", { class: "meta" }, "These are kept in this browser."),
+    h("div", { class: "setting-group" },
+      h("h3", {}, "data", h("small", {}, "where it comes from")),
+      h("p", { class: "meta" },
+        `${data.index.length.toLocaleString("en")} objects · data from ${data.meta.exported_at?.slice(0, 10) || "?"}`),
+      (data.meta.sources || []).map((source) => h("p", { class: "meta" }, source))),
   );
 }
 
