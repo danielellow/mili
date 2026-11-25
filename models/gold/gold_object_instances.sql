@@ -90,6 +90,39 @@ from_collection as (
 
 ),
 
+from_collection_searches as (
+
+    -- what the Apple search and Odesli found for your Bandcamp collection
+    -- (the --library runs), with their confidence from seeds/match_confidence.csv
+    select
+        o.object_id,
+        found.platform_id,
+        found.url,
+        found.method as sources,
+        found.method as methods,
+        c.confidence,
+        null::varchar as relation_types,
+        0::bigint as editions_linked,
+        true as linked_at_album_level
+    from (
+        select born_from, 'apple_music' as platform_id, url, 'apple_title_search' as method
+        from {{ ref('silver_apple_library_matches') }}
+        where is_accepted and url is not null
+        union all
+        select born_from, platform_id, url, 'odesli' as method
+        from {{ ref('silver_odesli_library_links') }}
+        where is_accepted
+    ) found
+    join {{ ref('gold_objects') }} o
+        on o.born_from = found.born_from
+    join {{ ref('platforms') }} p
+        on p.platform_id = found.platform_id
+        and p.for_releases
+    left join {{ ref('match_confidence') }} c
+        on c.method = found.method
+
+),
+
 all_instances as (
 
     select * from from_works
@@ -99,6 +132,8 @@ all_instances as (
     select * from from_mixes
     union all by name
     select * from from_collection
+    union all by name
+    select * from from_collection_searches
 
 ),
 

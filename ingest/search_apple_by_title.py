@@ -25,11 +25,19 @@ After it: `dbt build`, then run Odesli again (step 6). Works that now have an
 Apple Music link get sent to Odesli for the first time, which finds them on
 the other platforms.
 
+With --library it searches your Bandcamp collection instead: the objects
+mili didn't know before (step 9) that have no streaming link yet. Tracks are
+searched as songs, so a track you bought can be found as that same track on
+Apple Music (and then, through Odesli, on Spotify and the rest). The answers go to
+    data/raw/apple_title_search_library/<run time>.jsonl
+and are checked in dbt (silver_apple_library_matches).
+
 Before running: the database has to exist (it does if you've run `dbt build`
 before).
 
 Examples:
     python ingest/search_apple_by_title.py --limit 10            (a quick test)
+    python ingest/search_apple_by_title.py --library             (your Bandcamp collection)
     python ingest/search_apple_by_title.py --only-unheard        (just the works with no listen link)
     caffeinate -i python ingest/search_apple_by_title.py         (everything, can take hours)
 """
@@ -48,6 +56,7 @@ from lookup_platforms_by_barcode import Apple, APPLE_COUNTRY
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATABASE = PROJECT_ROOT / "data" / "mili.duckdb"
 RAW_DIR = PROJECT_ROOT / "data" / "raw" / "apple_title_search"
+RAW_DIR_LIBRARY = PROJECT_ROOT / "data" / "raw" / "apple_title_search_library"
 CANDIDATES_PER_WORK = 10
 SECONDS_PER_SEARCH = 3.2
 
@@ -109,12 +118,32 @@ def works_to_search(labels, only_unheard):
     return rows
 
 
-def already_searched():
-    """Works that already have an answer (with or without candidates)."""
+def library_items_to_search():
+    """Objects from your Bandcamp collection without a streaming link yet."""
+    if not DATABASE.exists():
+        sys.exit("No database found. Run `dbt build` first, then try again.")
+    streaming = ", ".join("?" for _ in STREAMING)
+    query = f"""
+        select o.born_from, o.title, o.artist_credit, coalesce(o.work_type, 'album') as item_type
+        from gold_objects o
+        where o.identity_source = 'bandcamp_collection'
+          and not exists (
+              select 1 from gold_object_instances i
+              where i.object_id = o.object_id
+                and i.platform_id in ({streaming})
+          )
+        order by o.born_from
+    """
+    with duckdb.connect(str(DATABASE), read_only=True) as con:
+        return con.execute(query, STREAMING).fetchall()
+
+
+def already_searched(raw_dir=RAW_DIR, key="work_id"):
+    """Works (or objects) that already have an answer (with or without candidates)."""
     done = set()
-    if not RAW_DIR.exists():
+    if not raw_dir.exists():
         return done
-    for path in RAW_DIR.glob("*.jsonl"):
+    for path in raw_dir.glob("*.jsonl"):
         with open(path, encoding="utf-8") as f:
             for line in f:
                 try:
@@ -122,7 +151,7 @@ def already_searched():
                 except json.JSONDecodeError:
                     continue
                 if record.get("status") in ("found", "not_found"):
-                    done.add(record["work_id"])
+                    done.add(record[key])
     return done
 
 
@@ -133,12 +162,12 @@ def already_searched():
 class AppleSearch(Apple):
     """The Apple connection from the barcode script, plus album search."""
 
-    def search(self, term):
+    def search(self, term, entity="album"):
         response = self.get(
             "https://itunes.apple.com/search",
             params={
                 "term": term,
-                "entity": "album",
+                "entity": entity,           # album, or song for a track
                 "limit": CANDIDATES_PER_WORK,
                 "country": APPLE_COUNTRY,
             },
@@ -146,7 +175,7 @@ class AppleSearch(Apple):
         return response.json()
 
 
-def search_work(apple, title, artist):
+def search_work(apple, title, artist, entity="album"):
     """Artist and title first, then the title alone. Returns (searches tried, answer)."""
     terms = [f"{artist or ''} {title}".strip()]
     if len((title or "").strip()) >= 4:
@@ -155,7 +184,7 @@ def search_work(apple, title, artist):
     answer = {}
     for term in terms:
         tried.append(term)
-        answer = apple.search(term)
+        answer = apple.search(term, entity)
         if answer.get("results"):
             break
     return tried, answer
@@ -171,9 +200,15 @@ def main():
                         help="only works on this mili label (can be used several times)")
     parser.add_argument("--only-unheard", action="store_true",
                         help="only works with no streaming link at all")
+    parser.add_argument("--library", action="store_true",
+                        help="search your Bandcamp collection instead of the labels' works")
     parser.add_argument("--limit", type=int, default=None,
                         help="stop after this many works (handy for a quick test)")
     args = parser.parse_args()
+
+    if args.library:
+        search_library(args.limit)
+        return
 
     works = works_to_search(args.label, args.only_unheard)
     done = already_searched()
@@ -232,6 +267,57 @@ def main():
     print("(Candidates are checked against artist and title in dbt.)")
     print(f"Saved to {out_path.relative_to(PROJECT_ROOT)}")
     print("Next: dbt build, then python ingest/lookup_odesli.py, then dbt build again.")
+
+
+def search_library(limit):
+    """The same search, for the objects from your Bandcamp collection."""
+    items = library_items_to_search()
+    done = already_searched(RAW_DIR_LIBRARY, key="born_from")
+    to_do = [item for item in items if item[0] not in done]
+    if limit:
+        to_do = to_do[:limit]
+    print(f"{len(items)} things from your Bandcamp collection without a streaming link, "
+          f"{len(items) - len(to_do)} already searched, {len(to_do)} to search.")
+    if not to_do:
+        return
+    minutes = len(to_do) * 1.5 * SECONDS_PER_SEARCH / 60
+    print(f"This will take about {max(1, round(minutes))} minutes. Stop anytime with Ctrl+C.\n")
+
+    apple = AppleSearch()
+    RAW_DIR_LIBRARY.mkdir(parents=True, exist_ok=True)
+    out_path = RAW_DIR_LIBRARY / f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.jsonl"
+    counts = {"found": 0, "not_found": 0, "error": 0}
+    try:
+        with open(out_path, "a", encoding="utf-8") as out:
+            for i, (born_from, title, artist, item_type) in enumerate(to_do, start=1):
+                fetched_at = datetime.now(timezone.utc).isoformat()
+                entity = "song" if item_type == "track" else "album"
+                try:
+                    tried, answer = search_work(apple, title, artist, entity)
+                    status = "found" if answer.get("results") else "not_found"
+                except Exception as error:
+                    tried, answer, status = [], {"error": str(error)}, "error"
+                counts[status] += 1
+                out.write(json.dumps({
+                    "born_from": born_from,
+                    "item_type": item_type,
+                    "title": title,
+                    "artist": artist,
+                    "searched_as": entity,
+                    "queries_tried": tried,
+                    "status": status,
+                    "fetched_at": fetched_at,
+                    "response": answer,
+                }, ensure_ascii=False) + "\n")
+                out.flush()
+                if i % 25 == 0 or i == len(to_do):
+                    print(f"   {i}/{len(to_do)}: with candidates {counts['found']}, "
+                          f"no candidates {counts['not_found']}, errors {counts['error']}")
+    except KeyboardInterrupt:
+        print("\nStopped. Everything so far is saved; run the same command to continue.")
+    print(f"\nWith candidates {counts['found']}, no candidates {counts['not_found']}, errors {counts['error']}.")
+    print(f"Saved to {out_path.relative_to(PROJECT_ROOT)}")
+    print("Next: dbt build, then python ingest/lookup_odesli.py --library, then dbt build again.")
 
 
 if __name__ == "__main__":

@@ -98,6 +98,24 @@ models:
               arguments:
                 values: ['matched_work', 'matched_bandcamp_page', 'new']
 
+  - name: bronze_apple_title_search_library
+    description: Every answer from the Apple Music search for your Bandcamp collection (search_apple_by_title.py --library).
+
+  - name: silver_apple_library_matches
+    description: Best Apple Music candidate for each thing from your Bandcamp collection (tracks searched as songs), accepted only if artist and title match closely.
+    columns:
+      - name: born_from
+        data_tests: [unique, not_null]
+
+  - name: bronze_odesli_library
+    description: Every answer from Odesli for your Bandcamp collection (lookup_odesli.py --library).
+
+  - name: silver_odesli_library_links
+    description: One row per platform link Odesli gave for something from your Bandcamp collection, with a title check.
+    columns:
+      - name: link_id
+        data_tests: [unique, not_null]
+
   - name: bronze_apple_title_search
     description: Every answer from the Apple Music artist + title search, as saved by ingest/search_apple_by_title.py.
     columns:

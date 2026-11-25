@@ -21,9 +21,14 @@ ODESLI_API_KEY.
 Before running: run `dbt build`, because the starting links are read from the
 DuckDB database it creates (data/mili.duckdb).
 
+With --library it does the same for your Bandcamp collection, starting from the
+Apple Music links that `search_apple_by_title.py --library` found. The answers
+go to data/raw/odesli_library/ and are checked in dbt (silver_odesli_library_links).
+
 Examples:
     python ingest/lookup_odesli.py --label "AD 93" --limit 5     (a quick test)
     caffeinate -i python ingest/lookup_odesli.py                   (all labels, overnight)
+    python ingest/lookup_odesli.py --library                       (your Bandcamp collection)
 """
 
 import argparse
@@ -41,6 +46,7 @@ from dotenv import load_dotenv
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATABASE = PROJECT_ROOT / "data" / "mili.duckdb"
 RAW_DIR = PROJECT_ROOT / "data" / "raw" / "odesli"
+RAW_DIR_LIBRARY = PROJECT_ROOT / "data" / "raw" / "odesli_library"
 ODESLI_URL = "https://api.odesli.co/v1-alpha.1/links"
 
 SECONDS_BETWEEN_CALLS = 6.2   # just under 10 per minute (and under 600 per hour)
@@ -95,12 +101,26 @@ def works_to_look_up(labels):
         return con.execute(query, params).fetchall()
 
 
-def already_answered():
-    """Works that already have an answer from Odesli (found or not found)."""
+def library_items_to_look_up():
+    """Things from your Bandcamp collection that the Apple search found (step 8, --library)."""
+    if not DATABASE.exists():
+        sys.exit("No database found. Run `dbt build` first, then try again.")
+    query = """
+        select born_from, 'apple_music' as platform_id, url
+        from silver_apple_library_matches
+        where is_accepted and url is not null
+        order by born_from
+    """
+    with duckdb.connect(str(DATABASE), read_only=True) as con:
+        return con.execute(query).fetchall()
+
+
+def already_answered(raw_dir=RAW_DIR, key="work_id"):
+    """Works (or objects) that already have an answer from Odesli (found or not found)."""
     done = set()
-    if not RAW_DIR.exists():
+    if not raw_dir.exists():
         return done
-    for path in RAW_DIR.glob("*.jsonl"):
+    for path in raw_dir.glob("*.jsonl"):
         with open(path, encoding="utf-8") as f:
             for line in f:
                 try:
@@ -108,7 +128,7 @@ def already_answered():
                 except json.JSONDecodeError:
                     continue
                 if record.get("status") in ("found", "not_found"):
-                    done.add(record["work_id"])
+                    done.add(record[key])
     return done
 
 
@@ -182,10 +202,15 @@ def main():
                         help="only works on this mili label (can be used several times)")
     parser.add_argument("--limit", type=int, default=None,
                         help="stop after this many works (handy for a quick test)")
+    parser.add_argument("--library", action="store_true",
+                        help="your Bandcamp collection: start from the Apple links the --library search found")
     args = parser.parse_args()
 
-    works = works_to_look_up(args.label)
-    done = already_answered()
+    # the same loop for both: a key (work_id, or born_from for your collection) and a starting link
+    key = "born_from" if args.library else "work_id"
+    raw_dir = RAW_DIR_LIBRARY if args.library else RAW_DIR
+    works = library_items_to_look_up() if args.library else works_to_look_up(args.label)
+    done = already_answered(raw_dir, key)
     to_do = [w for w in works if w[0] not in done]
     if args.limit:
         to_do = to_do[: args.limit]
@@ -200,8 +225,8 @@ def main():
     print(f"This will take {estimate}. Stop anytime with Ctrl+C.\n")
 
     odesli = Odesli()
-    RAW_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = RAW_DIR / f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.jsonl"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    out_path = raw_dir / f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.jsonl"
 
     counts = {"found": 0, "not_found": 0, "error": 0}
     try:
@@ -215,7 +240,7 @@ def main():
                 counts[status] += 1
 
                 record = {
-                    "work_id": work_id,
+                    key: work_id,
                     "start_platform": start_platform,
                     "start_url": start_url,
                     "status": status,
