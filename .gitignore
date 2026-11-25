@@ -6,7 +6,7 @@
 __pycache__/
 
 # Downloaded data (it can always be fetched again)
-data/
+/data/
 
 # Mac system files
 .DS_Store
