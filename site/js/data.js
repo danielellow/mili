@@ -7,6 +7,7 @@
 //   library.json       Daniel's library: items and collages
 //   platforms.json     the platforms and their order
 //   labels.json        the labels, in Daniel's order, with their pictures
+//   supabase.json      where the live database is (address + publishable key)
 //   meta.json          counts and where the data comes from
 
 const cache = new Map();          // objects/<xx>.json files already loaded
@@ -18,6 +19,7 @@ export const data = {
   byLabel: new Map(),             // label name -> objects
   labels: [],                     // label names, A to Z
   labelInfo: [],                  // the labels with pictures, from labels.json
+  supabase: null,                 // {url, key} for live search, from supabase.json
   library: { items: [], collages: [] },
   inLibrary: new Map(),           // mili ID -> library item (added_on, status, collages)
   platforms: [],
@@ -41,19 +43,21 @@ export function normalize(text) {
 }
 
 export async function loadAll() {
-  const [index, library, platforms, meta, labelInfo] = await Promise.all([
+  const [index, library, platforms, meta, labelInfo, supabase] = await Promise.all([
     getJson("data/index.json"),
     getJson("data/library.json").catch(() => ({ items: [], collages: [] })),
     getJson("data/platforms.json"),
     getJson("data/meta.json"),
     getJson("data/labels.json").catch(() => []),
+    getJson("data/supabase.json").catch(() => null),
   ]);
 
   data.index = index;
   data.library = library;
   data.platforms = platforms;
   data.meta = meta;
-  data.labelInfo = labelInfo;
+  data.labelInfo = labelInfo || [];
+  data.supabase = supabase && supabase.url && supabase.key ? supabase : null;
 
   for (const obj of index) {
     data.byId.set(obj.id, obj);
@@ -104,6 +108,59 @@ export function search(query, limit = 60) {
   }
   hits.sort((a, b) => b.score - a.score || (b.obj.year || 0) - (a.obj.year || 0));
   return { total: hits.length, results: hits.slice(0, limit).map((h) => h.obj) };
+}
+
+// Live search: asks the search_objects function in Supabase (see
+// supabase/schema.sql), which also finds near-misses like typos.
+// If Supabase isn't set up, or doesn't answer within 4 seconds, it searches
+// in the browser instead, like search() above.
+// After a failed try it searches in the browser for a minute before trying
+// Supabase again, so a paused or unreachable database doesn't slow every search.
+// Returns { total, results, source: "supabase" | "browser", close, ms, why }.
+let liveResumesAt = 0;
+let liveTrouble = "";
+
+export async function searchLive(query, limit = 60) {
+  if (!normalize(query)) return { total: 0, results: [], source: "browser" };
+  if (!data.supabase) return { ...search(query, limit), source: "browser" };
+  if (Date.now() < liveResumesAt) return { ...search(query, limit), source: "browser", why: liveTrouble };
+
+  const { url, key } = data.supabase;
+  const headers = { apikey: key, "Content-Type": "application/json" };
+  // the older kind of key (a long "eyJ…" token) also has to be sent as Authorization
+  if (!key.startsWith("sb_publishable_")) headers.Authorization = `Bearer ${key}`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4000);
+  const started = performance.now();
+  try {
+    const response = await fetch(`${url}/rest/v1/rpc/search_objects`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ query, max_results: limit }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Supabase answered ${response.status}`);
+    const rows = await response.json();
+    return {
+      total: rows.length ? Number(rows[0].total) : 0,
+      // use the object the site already knows when it can, so covers and
+      // library marks work the same; otherwise the row from Supabase itself
+      results: rows.map((row) => data.byId.get(row.id) || row),
+      close: rows.some((row) => row.close_match),
+      source: "supabase",
+      ms: Math.round(performance.now() - started),
+    };
+  } catch (error) {
+    const why = error.name === "AbortError" ? "Supabase didn't answer"
+      : error instanceof TypeError ? "couldn't reach Supabase" : error.message;
+    console.warn(`Live search: ${why} (${error.message}). Searching in the browser for a minute.`);
+    liveResumesAt = Date.now() + 60_000;
+    liveTrouble = why;
+    return { ...search(query, limit), source: "browser", why };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Everything by the same artist(s), the object itself left out.

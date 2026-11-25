@@ -85,6 +85,8 @@ main { min-height: 70vh; }
 .page { max-width: 64rem; margin: 0 auto; padding: 4.2rem 2.2rem 5rem; }
 .loading, .empty { font-family: var(--mono); color: var(--dim); padding: 3rem 2rem; text-align: center; }
 .count, .meta, .versions { font-family: var(--mono); font-size: 0.86rem; color: var(--dim); line-height: 1.7; }
+.count .source { float: right; color: var(--faint); }
+.count .source.supabase::before { content: "● "; color: var(--accent); }
 .intro { font-size: 1.2rem; line-height: 1.55; max-width: 40rem; color: var(--dim); margin: 0 0 2rem; }
 
 .search {

@@ -17,6 +17,10 @@ It reads the table gold_site_objects from the DuckDB database that dbt builds
     library.json        your library (seeds/library.csv): which objects are in it,
                         when they were added, collection or queue, and your collages
     platforms.json      the platforms, their names and their order
+    labels.json         the labels, in your order, with their pictures
+    supabase.json       where the live database is, for live search: the
+                        project address and the publishable key from .env
+                        (both are meant to be public; the secret key never is)
     meta.json           when the export was made, counts, and where the data
                         comes from
 
@@ -31,7 +35,9 @@ Examples:
 """
 
 import argparse
+import base64
 import json
+import os
 import shutil
 import sys
 from collections import defaultdict
@@ -39,6 +45,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import duckdb
+from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATABASE = PROJECT_ROOT / "data" / "mili.duckdb"
@@ -74,6 +81,31 @@ def write_json(path, data, pretty):
             json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
 
 
+def supabase_settings():
+    """The project address and publishable key from .env, checked so that a
+    secret key can never end up in the website by mistake."""
+    load_dotenv(PROJECT_ROOT / ".env")
+    url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+    key = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
+    if not url or not key:
+        return None, "SUPABASE_URL or SUPABASE_PUBLISHABLE_KEY isn't in .env, so the site searches in the browser"
+    if key.startswith("sb_secret_"):
+        sys.exit("SUPABASE_PUBLISHABLE_KEY in .env is a secret key (sb_secret_…). That one must never go in "
+                 "the website. Put the publishable key (sb_publishable_…) there instead. Nothing was written.")
+    if key.count(".") == 2:
+        # an older kind of key: a token whose middle part says which role it is
+        try:
+            middle = key.split(".")[1]
+            role = json.loads(base64.urlsafe_b64decode(middle + "=" * (-len(middle) % 4))).get("role")
+        except Exception:
+            role = None
+        if role != "anon":
+            sys.exit("SUPABASE_PUBLISHABLE_KEY in .env isn't the publishable (anon) key. Nothing was written.")
+    if not url.startswith("https://"):
+        sys.exit("SUPABASE_URL in .env should start with https:// (the Project URL from Supabase).")
+    return {"url": url, "key": key}, f"live search through {url}"
+
+
 def size(path):
     """A file's size, written for people: 812 KB, 4.1 MB."""
     n = path.stat().st_size
@@ -87,6 +119,9 @@ def main():
 
     if not DATABASE.exists():
         sys.exit("No database found. Run `dbt build` first, then try again.")
+
+    # checked first, so a wrong key stops the export before anything is written
+    supabase, supabase_note = supabase_settings()
 
     with duckdb.connect(str(DATABASE), read_only=True) as con:
         objects = read_table(con, "select * from gold_site_objects order by id")
@@ -138,7 +173,13 @@ def main():
     write_json(OUT_DIR / "platforms.json", platforms, args.pretty)
     write_json(OUT_DIR / "labels.json", labels, args.pretty)
 
-    # 5. meta.json
+    # 5. supabase.json, for live search (removed if .env doesn't have the settings)
+    if supabase:
+        write_json(OUT_DIR / "supabase.json", supabase, args.pretty)
+    elif (OUT_DIR / "supabase.json").exists():
+        (OUT_DIR / "supabase.json").unlink()
+
+    # 6. meta.json
     kinds = defaultdict(int)
     availability = defaultdict(int)
     for obj in objects:
@@ -162,6 +203,7 @@ def main():
     with_pictures = sum(1 for label in labels if label["image"])
     print(f"  labels.json       {len(labels)} labels, {with_pictures} with a picture")
     print(f"  platforms.json, meta.json")
+    print(f"  supabase.json     {supabase_note}" if supabase else f"  (no supabase.json: {supabase_note})")
     print("By kind:", ", ".join(f"{k} {v:,}" for k, v in sorted(kinds.items())))
     print("Where they can be heard:", ", ".join(f"{k} {v:,}" for k, v in sorted(availability.items())))
 

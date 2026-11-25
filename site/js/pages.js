@@ -1,6 +1,6 @@
 // mili: the pages. Each function returns what goes into <main>.
 
-import { data, getObject, search, sameArtist, water, inRotation } from "./data.js";
+import { data, getObject, searchLive, sameArtist, water, inRotation } from "./data.js";
 import { h, mi, cover, byline, list, row, dotKey, availabilityText, availabilityDot } from "./ui.js";
 import { readTheme, saveTheme, DEFAULT_ACCENT } from "./theme.js";
 
@@ -15,17 +15,32 @@ export function home(query) {
   const results = h("div", { class: "results" });
 
   // results under the search box, updated as you type (the box keeps its focus)
-  function showResults(q) {
+  let latest = 0;
+  async function showResults(q) {
+    const ticket = ++latest;
     if (!q) {
       results.replaceChildren(overview());
       return;
     }
-    const { total, results: found } = search(q);
+    // if the answer takes a moment, say so
+    const waiting = setTimeout(() => {
+      if (ticket === latest) results.querySelector(".count")?.replaceChildren("searching…");
+    }, 350);
+    const answer = await searchLive(q);
+    clearTimeout(waiting);
+    // while waiting, a newer search may have started: then this one is old news
+    if (ticket !== latest) return;
+    const { total, results: found, source, close, ms, why } = answer;
+
+    const where = source === "supabase"
+      ? `live from Supabase · ${ms} ms`
+      : why ? `searched in this browser (${why})` : "searched in this browser";
+    const count = total === 0 ? `Nothing found for “${q}”.`
+      : close ? `No exact matches for “${q}”. ${total.toLocaleString("en")} close ${total === 1 ? "match" : "matches"}`
+        : total > found.length ? `${total.toLocaleString("en")} found · showing the first ${found.length}`
+          : `${total.toLocaleString("en")} found`;
     results.replaceChildren(
-      h("p", { class: "count" },
-        total === 0 ? `Nothing found for “${q}”.`
-          : total > found.length ? `${total.toLocaleString("en")} found · showing the first ${found.length}`
-            : `${total.toLocaleString("en")} found`),
+      h("p", { class: "count" }, count, h("span", { class: `source ${source}` }, where)),
       list(found, ""),
     );
   }
@@ -44,7 +59,7 @@ export function home(query) {
         const q = event.target.value.trim();
         history.replaceState(null, "", q ? `#/?q=${encodeURIComponent(q)}` : "#/");
         showResults(q);
-      }, 120);
+      }, 180);
     },
   });
   setTimeout(() => box.focus(), 0);
@@ -263,7 +278,7 @@ export function library(params) {
 // The labels as a grid of pictures. Uses labels.json (your order, with
 // pictures) when the export has it, otherwise the label names A to Z.
 function labelGrid() {
-  const labels = data.labelInfo.length
+  const labels = data.labelInfo?.length
     ? data.labelInfo.filter((l) => data.byLabel.has(l.name))
     : data.labels.map((name) => ({ name, image: null }));
   return h("div", { class: "label-grid" },
