@@ -18,3 +18,22 @@ After each `dbt build`:
 
 It needs `SUPABASE_DB_URL` in `.env`: the Session pooler connection string,
 with the database password in it. Never commit it.
+
+## The function: search outside mili
+
+`functions/search-outside/index.ts` runs at Supabase (an Edge Function). It does two things:
+
+- **Search:** when mili doesn't have a release, the website asks it, and it asks
+  MusicBrainz, Apple Music, Deezer and Discogs at the same time, then sends back
+  one list with the same releases put together.
+- **Find everywhere:** from a result's Apple Music or Deezer link, it asks Odesli
+  for the same release on Spotify, YouTube, YouTube Music, Tidal, Amazon Music …
+
+It's deployed from the Supabase dashboard: Edge Functions → Deploy a new
+function → Via Editor, named `search-outside`, with this file's code pasted in,
+and with JWT verification turned off in the function's settings (the
+publishable key isn't a JWT, so the code checks the key itself).
+After changing the file, paste it in again and deploy.
+
+It needs two secrets, set under Edge Functions → Secrets (never in the website):
+`DISCOGS_TOKEN` and `ODESLI_API_KEY`, the same values as in `.env`.

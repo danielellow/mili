@@ -1,6 +1,6 @@
 // mili: the pages. Each function returns what goes into <main>.
 
-import { data, getObject, searchLive, sameArtist, water, inRotation } from "./data.js";
+import { data, getObject, searchLive, searchOutside, findEverywhere, sameArtist, water, inRotation } from "./data.js";
 import { h, mi, cover, byline, list, row, dotKey, availabilityText, availabilityDot } from "./ui.js";
 import { readTheme, saveTheme, DEFAULT_ACCENT } from "./theme.js";
 
@@ -38,10 +38,53 @@ export function home(query) {
       : close ? `No exact matches for “${q}”. ${total.toLocaleString("en")} close ${total === 1 ? "match" : "matches"}`
         : total > found.length ? `${total.toLocaleString("en")} found · showing the first ${found.length}`
           : `${total.toLocaleString("en")} found`;
+    const outside = h("div", { class: "outside" });
     results.replaceChildren(
       h("p", { class: "count" }, count, h("span", { class: `source ${source}` }, where)),
       list(found, ""),
+      outside,
     );
+    // outside mili: by itself when mili has nothing (or only near-misses),
+    // otherwise on request
+    if (data.supabase) {
+      if (total === 0 || close) {
+        // wait until typing has paused, so half-typed words aren't searched
+        setTimeout(() => { if (ticket === latest) showOutside(q, outside, ticket); }, 700);
+      } else {
+        outside.replaceChildren(h("button", {
+          class: "bracket",
+          onclick: () => showOutside(q, outside, ticket),
+        }, "[search outside mili]"));
+      }
+    }
+  }
+
+  async function showOutside(q, box, ticket) {
+    box.replaceChildren(h("h2", {}, "Outside mili"), h("p", { class: "count" }, "searching…"));
+    const answer = await searchOutside(q);
+    if (ticket !== latest) return;
+    if (answer.error) {
+      box.replaceChildren(h("h2", {}, "Outside mili"),
+        h("p", { class: "count" }, `The outside search didn't work: ${answer.error}.`));
+      return;
+    }
+    const names = { musicbrainz: "MusicBrainz", apple_music: "Apple Music", deezer: "Deezer", discogs: "Discogs" };
+    const status = Object.entries(answer.sources || {}).map(([name, s]) =>
+      s.error ? `${names[name] || name}: ${s.error}` : `${names[name] || name} ${s.found}`).join(" · ");
+    const shown = (answer.results || []).map((r) => outsideRow(r, names));
+    box.replaceChildren(
+      h("h2", {}, "Outside mili"),
+      h("p", { class: "count" },
+        shown.length ? `${shown.length} found online` : `Nothing found online for “${q}”.`,
+        h("span", { class: "source" }, `${status} · ${answer.ms} ms`)),
+      shown.length ? h("div", { class: "list" }, shown.map((s) => s.row)) : null,
+    );
+    // Odesli allows 10 lookups a minute, so only the top 3 fill in by
+    // themselves, one after another; the rest keep the links the search found
+    for (const item of shown.filter((s) => s.start).slice(0, 3)) {
+      if (ticket !== latest) return;      // a new search has started
+      await item.fillIn();
+    }
   }
 
   let typing;
@@ -124,10 +167,7 @@ export async function release(id) {
     // (a click anywhere else closes the menu: see app.js)
     listen.append(h("span", { class: "buy" }, toggle, menu));
   }
-  listen.append(h("span", {
-    class: "bracket muted",
-    title: "Looking for new links needs a small server. Coming after the course.",
-  }, "[refresh links]…"));
+  listen.append(refreshLinks(obj, listen));
 
   // the icons: queue and collection (from the library), rotation (opened from
   // mili in the last 30 days, in this browser), and the atlas
@@ -189,6 +229,53 @@ export async function release(id) {
     more.length ? h("h2", {}, `More by ${obj.artist}`) : null,
     more.length ? list(more) : null,
   );
+}
+
+// [refresh links] on a release page: asks Odesli, through the function at
+// Supabase, for this release on every platform, starting from its Apple Music,
+// Deezer, Spotify or Tidal link, and adds the platforms mili didn't have yet,
+// marked "new". They show on the page only; saving them comes later.
+function refreshLinks(obj, listen) {
+  const startFrom = ["apple_music", "deezer", "spotify", "tidal"];
+  const start = startFrom.map((p) => obj.listen.find((l) => l.platform === p)).find(Boolean);
+  if (!data.supabase || !start) {
+    return h("span", {
+      class: "bracket muted",
+      title: start ? "needs live search (Supabase) to be set up"
+        : "needs a link on Apple Music, Deezer, Spotify or Tidal to start from",
+    }, "[refresh links]");
+  }
+  const button = h("button", {
+    class: "bracket refresh-links",
+    title: "look for this release on more platforms",
+    onclick: async (event) => {
+      event.stopPropagation();
+      button.disabled = true;
+      button.textContent = "[refreshing links]";
+      const answer = await findEverywhere(start.url);
+      if (answer.error) {
+        button.disabled = false;
+        button.textContent = "[refresh links]";
+        button.title = `didn't work: ${answer.error}`;
+        return;
+      }
+      const known = new Set(obj.listen.map((l) => l.platform));
+      const allowed = new Set(data.platforms.filter((p) => p.for_releases !== false).map((p) => p.id));
+      const fresh = (answer.links || []).filter((l) => !known.has(l.platform) && allowed.has(l.platform));
+      const buy = listen.querySelector(".buy");
+      for (const l of fresh) {
+        obj.listen.push({ platform: l.platform, name: l.name, url: l.url });
+        const link = h("a", {
+          class: "link new", href: l.url, target: "_blank", rel: "noopener",
+          title: `${l.name}: just found`, onclick: () => water(obj.id),
+        }, l.name, " ↗", h("span", { class: "version" }, "new"));
+        listen.insertBefore(link, buy || button);
+      }
+      button.textContent = fresh.length ? `[${fresh.length} new]` : "[nothing new]";
+      button.title = "refreshed just now";
+    },
+  }, "[refresh links]");
+  return button;
 }
 
 // "contains 8": the songs on a release, each with the cover, title and artist,
@@ -328,6 +415,67 @@ export function library(params) {
         items.map((i) => row(data.byId.get(i.id), h("span", { class: "added" }, i.added_on || ""))))
       : h("p", { class: "empty" }, "The library is empty. Add releases to seeds/library.csv and run the export again."),
   );
+}
+
+// One release found outside mili: cover, title, artist and year, and where it
+// was found. If mili has it after all, the row links to it.
+// fillIn() asks Odesli for the same release on the other platforms, starting
+// from its Apple Music or Deezer link, and puts them in place of the links.
+// Each release is looked up once per visit (kept in `everywhereSeen`).
+const everywhereSeen = new Map();
+
+function outsideRow(r, names) {
+  const sourceLinks = (sources) => sources.map((s) =>
+    h("a", { href: s.url, target: "_blank", rel: "noopener" }, `${s.name || names[s.source] || s.source} ↗`));
+  const links = h("span", { class: "found-links" }, sourceLinks(r.sources));
+  const start = r.sources.find((s) => s.source === "apple_music") || r.sources.find((s) => s.source === "deezer");
+  const waiting = h("span", { class: "finding", hidden: true }, "…");
+  // [refresh links]: ask Odesli (again) for this result, by hand
+  const refresh = start ? h("button", {
+    class: "bracket refresh",
+    title: "look for this release on the other platforms",
+    onclick: () => fillIn(true),
+  }, "[refresh links]") : null;
+  async function fillIn(again = false) {
+    if (again) everywhereSeen.delete(start.url);
+    waiting.hidden = false;
+    if (refresh) { refresh.disabled = true; refresh.textContent = "[refreshing links]"; }
+    if (!everywhereSeen.has(start.url)) everywhereSeen.set(start.url, findEverywhere(start.url));
+    const answer = await everywhereSeen.get(start.url);
+    waiting.hidden = true;
+    if (refresh) { refresh.disabled = false; refresh.textContent = "[refresh links]"; }
+    if (answer.error || !(answer.links || []).length) {
+      everywhereSeen.delete(start.url);   // try again next time
+      if (refresh) refresh.title = answer.error ? `didn't work: ${answer.error}` : "nothing more found";
+      return;
+    }
+    // the platforms in mili's usual order, then MusicBrainz and Discogs
+    const order = new Map(data.platforms.map((p) => [p.id, p.default_order ?? 99]));
+    const found = answer.links.slice().sort((a, b) => (order.get(a.platform) ?? 99) - (order.get(b.platform) ?? 99));
+    const catalogues = r.sources.filter((s) => s.source === "musicbrainz" || s.source === "discogs");
+    links.replaceChildren(...sourceLinks([...found, ...catalogues]));
+  }
+
+  const picture = r.cover
+    ? h("img", { class: "cover small", src: r.cover, alt: "", loading: "lazy" })
+    : h("div", { class: "cover placeholder small" }, (r.title || "?").charAt(0).toUpperCase());
+  if (picture.tagName === "IMG") {
+    picture.addEventListener("error", () =>
+      picture.replaceWith(h("div", { class: "cover placeholder small" }, (r.title || "?").charAt(0).toUpperCase())));
+  }
+  const row = h("div", { class: "row outside-row" },
+    picture,
+    h("div", { class: "row-text" },
+      h("div", { class: "row-title" }, r.title, r.type ? h("span", { class: "badge" }, r.type) : null),
+      h("div", { class: "byline" }, [r.artist, r.year].filter(Boolean).join(" · "))),
+    h("div", { class: "found-in" },
+      r.inMili
+        ? h("a", { class: "in-mili", href: `#/release/${r.inMili}` }, "in mili →")
+        : h("span", { class: "not-yet" }, "not in mili yet"),
+      links,
+      waiting,
+      refresh));
+  return { row, start, fillIn };
 }
 
 // The labels as a grid of pictures. Uses labels.json (your order, with

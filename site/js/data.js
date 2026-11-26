@@ -163,6 +163,68 @@ export async function searchLive(query, limit = 60) {
   }
 }
 
+// Search outside mili: asks the search-outside function at Supabase (see
+// supabase/functions/search-outside), which asks MusicBrainz, Apple Music and
+// Deezer. Results that are already in mili are marked with their mili ID.
+// Returns { results, sources, ms } or { error }.
+export async function searchOutside(query) {
+  if (!data.supabase) return { error: "live search isn't set up" };
+  const { url, key } = data.supabase;
+  const headers = { apikey: key, "Content-Type": "application/json" };
+  if (!key.startsWith("sb_publishable_")) headers.Authorization = `Bearer ${key}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(`${url}/functions/v1/search-outside`, {
+      method: "POST", headers, body: JSON.stringify({ query }), signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`the search answered ${response.status}`);
+    const answer = await response.json();
+    for (const result of answer.results || []) {
+      result.inMili = findInMili(result.artist, result.title);
+    }
+    return answer;
+  } catch (error) {
+    return { error: error.name === "AbortError" ? "it didn't answer in time" : error.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Find everywhere: from one Apple Music or Deezer link, the same release on the
+// other platforms (through Odesli, in the same function at Supabase).
+// Returns { links: [{platform, name, url}], ms } or { error }.
+export async function findEverywhere(link) {
+  if (!data.supabase) return { error: "live search isn't set up" };
+  const { url, key } = data.supabase;
+  const headers = { apikey: key, "Content-Type": "application/json" };
+  if (!key.startsWith("sb_publishable_")) headers.Authorization = `Bearer ${key}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(`${url}/functions/v1/search-outside`, {
+      method: "POST", headers, body: JSON.stringify({ everywhere: link }), signal: controller.signal,
+    });
+    const answer = await response.json().catch(() => ({}));
+    if (!response.ok && !answer.error) throw new Error(`the search answered ${response.status}`);
+    return answer;
+  } catch (error) {
+    return { error: error.name === "AbortError" ? "it didn't answer in time" : error.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// The mili object with this artist and title, if there is one
+function findInMili(artist, title) {
+  const a = normalize(artist).replace(/^the /, "");
+  const t = normalize((title || "").replace(/\s*[\(\[][^\)\]]*[\)\]]/g, "").replace(/\s+-\s+(ep|single)$/i, ""));
+  if (!a || !t) return null;
+  const hit = data.index.find((o) =>
+    o._title.startsWith(t) && normalize(o.artist).replace(/^the /, "") === a);
+  return hit ? hit.id : null;
+}
+
 // Everything by the same artist(s), the object itself left out.
 export function sameArtist(obj) {
   const seen = new Map();
