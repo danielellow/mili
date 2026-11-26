@@ -11,7 +11,7 @@ It reads the table gold_site_objects from the DuckDB database that dbt builds
                         the garden need: id, title, artist, artist IDs, year,
                         labels, cover, genres, where it can be heard, versions
     objects/<xx>.json   everything a release page shows (listen links, buy menu,
-                        versions), split into 256 small files by the first two
+                        versions, the songs, Bandcamp's player), split into 256 small files by the first two
                         characters of the mili ID, so a page only loads one small
                         file: the release 3f9a2c81d0be is in objects/3f.json
     library.json        your library (seeds/library.csv): which objects are in it,
@@ -130,6 +130,12 @@ def main():
             from gold_library
             order by added_on desc nulls last, object_id
         """)
+        tracks = read_table(con, """
+            select object_id, disc, number, title, artist, length_ms
+            from gold_object_tracks
+            order by object_id, track_no
+        """)
+        players = dict(con.execute("select object_id, embed from gold_bandcamp_players").fetchall())
         labels = read_table(con, """
             select label as name, slug, image, bandcamp_url as page, objects
             from gold_labels
@@ -152,9 +158,15 @@ def main():
     index = [{field: obj[field] for field in INDEX_FIELDS} for obj in objects]
     write_json(OUT_DIR / "index.json", index, args.pretty)
 
-    # 2. objects/<xx>.json: the full version, grouped by the first two characters of the ID
+    # 2. objects/<xx>.json: the full version, grouped by the first two characters of the ID,
+    #    with the songs (when we know them) and Bandcamp's player (when there are none)
+    songs = defaultdict(list)
+    for track in tracks:
+        songs[track.pop("object_id")].append(track)
     chunks = defaultdict(dict)
     for obj in objects:
+        obj["tracks"] = songs.get(obj["id"], [])
+        obj["bandcamp_player"] = None if obj["tracks"] else players.get(obj["id"])
         chunks[obj["id"][:2]][obj["id"]] = obj
     for prefix, chunk in chunks.items():
         write_json(OUT_DIR / "objects" / f"{prefix}.json", chunk, args.pretty)
@@ -200,6 +212,10 @@ def main():
     objects_size = sum(p.stat().st_size for p in (OUT_DIR / "objects").glob("*.json"))
     print(f"  objects/          {len(chunks)} files, {objects_size / 1_000_000:.1f} MB in all")
     print(f"  library.json      {len(library)} items, {len(collages)} collages")
+    with_songs = sum(1 for obj in objects if obj["tracks"])
+    with_player = sum(1 for obj in objects if obj["bandcamp_player"])
+    print(f"  songs             {len(tracks):,} songs on {with_songs:,} releases; "
+          f"Bandcamp's player on {with_player:,} more")
     with_pictures = sum(1 for label in labels if label["image"])
     print(f"  labels.json       {len(labels)} labels, {with_pictures} with a picture")
     print(f"  platforms.json, meta.json")

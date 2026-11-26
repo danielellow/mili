@@ -152,6 +152,25 @@ create table if not exists public.platforms (
     for_releases  boolean
 );
 
+-- The songs on each release, in order (gold_object_tracks)
+create table if not exists public.tracks (
+    track_id   text primary key,                  -- the object's ID + the song's place, e.g. 3f9a2c81d0be-004
+    object_id  text not null references public.objects (id) on delete cascade,
+    track_no   integer not null,                  -- 1, 2, 3 … across all discs
+    disc       integer,
+    number     text,                              -- as printed: 3, or B1 on vinyl
+    title      text not null,
+    artist     text,
+    length_ms  integer,
+    source     text                               -- musicbrainz or apple
+);
+
+-- Bandcamp's own player, for releases without a track list (gold_bandcamp_players)
+create table if not exists public.bandcamp_players (
+    object_id text primary key references public.objects (id) on delete cascade,
+    embed     text not null                       -- album=<Bandcamp ID> or track=<Bandcamp ID>
+);
+
 -- The labels, with their pictures and your order (gold_labels)
 create table if not exists public.labels (
     label         text primary key,
@@ -182,6 +201,7 @@ create index if not exists listen_options_object on public.listen_options (objec
 create index if not exists buy_options_object on public.buy_options (object_id);
 create index if not exists object_versions_object on public.object_versions (object_id);
 create index if not exists object_instances_object on public.object_instances (object_id);
+create index if not exists tracks_object on public.tracks (object_id, track_no);
 
 
 -- ---------------------------------------------------------------------------
@@ -253,7 +273,8 @@ declare
     t text;
 begin
     foreach t in array array['objects', 'listen_options', 'buy_options', 'object_versions',
-                             'object_instances', 'library', 'platforms', 'labels', 'load_log']
+                             'object_instances', 'library', 'platforms', 'labels', 'tracks',
+                             'bandcamp_players', 'load_log']
     loop
         execute format('alter table public.%I enable row level security', t);
         execute format('drop policy if exists "anyone may read" on public.%I', t);

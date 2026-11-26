@@ -139,6 +139,25 @@ main { min-height: 70vh; }
 a.act:hover { color: var(--text); }
 .act.on { color: var(--accent); }
 
+/* ---- what's on a release ------------------------------------------- */
+
+.contains { margin: 3.2rem 0 2.6rem; }
+.contains h3 { display: flex; align-items: baseline; gap: 0.8rem; font-size: 1.35rem; font-weight: 600; margin: 0 0 1rem; }
+.contains h3 .n { font-family: var(--mono); font-weight: 400; font-size: 0.85rem; color: var(--faint); }
+.tracks { display: flex; flex-direction: column; }
+.track { display: flex; align-items: center; gap: 1.1rem; padding: 0.55rem 0.4rem; border-radius: 4px; }
+.track:hover { background: var(--panel); }
+.track .cover.small { width: 2.7rem; height: 2.7rem; }
+.track .row-title { font-size: 1.05rem; }
+.track-artist { color: var(--dim); font-size: 0.95rem; margin-top: 0.15rem; }
+.track .length { font-family: var(--mono); font-size: 0.78rem; color: var(--faint); }
+.disc { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
+        color: var(--dim); margin: 1.4rem 0 0.4rem 0.4rem; }
+.bandcamp-player { display: block; width: 100%; border: 0; }
+.bandcamp-player.player-album { height: 470px; }
+.bandcamp-player.player-track { height: 120px; }
+.player-note { font-family: var(--mono); font-size: 0.75rem; color: var(--faint); margin: 0.6rem 0 0; }
+
 /* ---- covers ----------------------------------------------------------- */
 
 .cover { display: block; object-fit: cover; background: var(--panel); border: 1px solid var(--line); }

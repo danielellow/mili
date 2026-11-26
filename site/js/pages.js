@@ -178,6 +178,7 @@ export async function release(id) {
         actions,
       ),
     ),
+    contains(obj),
     versions,
     libraryLine,
     h("p", { class: "meta" },
@@ -188,6 +189,64 @@ export async function release(id) {
     more.length ? h("h2", {}, `More by ${obj.artist}`) : null,
     more.length ? list(more) : null,
   );
+}
+
+// "contains 8": the songs on a release, each with the cover, title and artist,
+// and the length on the right. Releases with more than one disc get a small
+// "disc 2" between the discs. Releases without a track list of their own, but
+// with a Bandcamp ID, show Bandcamp's official embedded player instead.
+function contains(obj) {
+  const tracks = obj.tracks || [];
+  if (tracks.length) {
+    const discs = new Set(tracks.map((t) => t.disc)).size;
+    return h("div", { class: "contains" },
+      h("h3", {}, "contains", h("span", { class: "n" }, tracks.length)),
+      h("div", { class: "tracks" },
+        tracks.map((t, i) => [
+          discs > 1 && (i === 0 || t.disc !== tracks[i - 1].disc)
+            ? h("p", { class: "disc" }, `disc ${t.disc}`) : null,
+          h("div", { class: "track" },
+            cover(obj, "small"),
+            h("div", { class: "row-text" },
+              h("div", { class: "row-title" }, t.title),
+              h("div", { class: "track-artist" }, t.artist || obj.artist || "")),
+            t.length_ms ? h("span", { class: "length" }, duration(t.length_ms)) : null),
+        ])));
+  }
+  if (obj.bandcamp_player) {
+    // Bandcamp's player, in the site's colours; an album gets its track list
+    const theme = readTheme();
+    const isAlbum = obj.bandcamp_player.startsWith("album=");
+    const src = "https://bandcamp.com/EmbeddedPlayer/" + [
+      obj.bandcamp_player,
+      "size=large",
+      `bgcol=${theme.dark ? "0b0b0b" : "ffffff"}`,
+      `linkcol=${theme.accent.replace("#", "")}`,
+      "artwork=none",
+      `tracklist=${isAlbum}`,
+      "transparent=true",
+    ].join("/") + "/";
+    return h("div", { class: "contains" },
+      h("h3", {}, "contains"),
+      h("iframe", {
+        class: `bandcamp-player ${isAlbum ? "player-album" : "player-track"}`,
+        src,
+        title: `${obj.title} on Bandcamp`,
+        loading: "lazy",
+        seamless: "",
+      }),
+      h("p", { class: "player-note" }, "Bandcamp's own player: the songs come straight from Bandcamp"));
+  }
+  return null;
+}
+
+// 241000 milliseconds -> "4:01"; over an hour -> "1:02:03"
+function duration(ms) {
+  const seconds = Math.round(ms / 1000);
+  const h_ = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = String(seconds % 60).padStart(2, "0");
+  return h_ ? `${h_}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
 // ---------------------------------------------------------------------------

@@ -89,6 +89,19 @@ TABLES = [
         """,
     },
     {
+        "name": "tracks",
+        "key": "track_id",
+        "query": """
+            select track_id, object_id, track_no, disc, number, title, artist, length_ms, source
+            from gold_object_tracks
+        """,
+    },
+    {
+        "name": "bandcamp_players",
+        "key": "object_id",
+        "query": "select object_id, embed from gold_bandcamp_players",
+    },
+    {
         "name": "library",
         "key": "object_id",
         "query": "select object_id, added_on, status, collages from gold_library",
@@ -194,7 +207,8 @@ def load(conn, data):
         # 3. Tell Postgres to update its statistics, so it plans searches well
         conn.autocommit = True
         cur.execute("analyze public.objects, public.listen_options, public.buy_options, "
-                    "public.object_versions, public.object_instances, public.library, public.platforms, public.labels")
+                    "public.object_versions, public.object_instances, public.library, public.platforms, public.labels, "
+                    "public.tracks, public.bandcamp_players")
     return counts, seconds
 
 
