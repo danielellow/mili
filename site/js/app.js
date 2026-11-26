@@ -1,14 +1,17 @@
 // mili: starting the app, and choosing the page from the address.
 //
 // The part of the address after "#" says which page to show:
-//   #/                     the catalogue, with search (#/?q=wind)
+//   #/                     home: getting started, recently added, the labels
+//   #/search?q=wind        everything that matches, in mili and outside it
 //   #/release/<mili ID>    a release or mix
 //   #/artist/<artist ID>   everything by one artist
 //   #/label/<name>         everything on one label
 //   #/library              the library (?show=queue, ?collage=late%20night)
 //   #/atlas/<mili ID>      the atlas, centred on one object
 //   #/garden               the garden
-//   #/settings             dark or light, accent colour
+//   #/settings             dark or light, accent colour, and more
+//   #/guide                how mili works
+// Press / (or ⌘K, or the + in the top bar) to open the search box (palette.js).
 // Because it's all after "#", the site is just files: no server is needed.
 
 import { data, loadAll } from "./data.js";
@@ -16,6 +19,8 @@ import { h } from "./ui.js";
 import { applyTheme } from "./theme.js";
 import * as pages from "./pages.js";
 import { atlas, walkBack } from "./atlas.js";
+import { garden } from "./garden.js";
+import { openPalette, closePalette } from "./palette.js";
 
 applyTheme();     // before anything is drawn, so there's no flash of the wrong theme
 
@@ -45,13 +50,16 @@ async function show() {
 
   let content;
   try {
-    if (!page) content = pages.home(params.get("q") || "");
+    if (!page && params.get("q")) { location.replace(`#/search?q=${encodeURIComponent(params.get("q"))}`); return; }
+    if (!page) content = pages.home();
+    else if (page === "search") content = pages.search(params.get("q") || "");
+    else if (page === "guide") content = pages.guide();
     else if (page === "release") content = await pages.release(arg);
     else if (page === "artist") content = pages.artist(arg);
     else if (page === "label") content = pages.label(arg);
     else if (page === "library") content = pages.library(params);
     else if (page === "atlas") content = atlas(arg);
-    else if (page === "garden") content = pages.comingSoon("Garden");
+    else if (page === "garden") content = await garden(params);
     else if (page === "settings") content = pages.settings();
     else content = pages.notFound("This page doesn't exist.");
   } catch (error) {
@@ -75,6 +83,12 @@ document.addEventListener("click", () => {
   menuButton.setAttribute("aria-expanded", "false");
 });
 
+// Keys in the garden (undo, remove a mark, put the tool down)
+document.addEventListener("keydown", (event) => {
+  if (document.body.dataset.page !== "garden") return;
+  view.querySelector(".garden")?.keyHandler?.(event);
+});
+
 // Keys in the atlas (not while typing in a box).
 document.addEventListener("keydown", (event) => {
   if (document.body.dataset.page !== "atlas") return;
@@ -90,7 +104,21 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-window.addEventListener("hashchange", show);
+// "/" or ⌘K opens the search box (not while typing in another box)
+document.addEventListener("keydown", (event) => {
+  const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
+  if ((event.key === "/" && !typing && !event.metaKey && !event.ctrlKey) ||
+      ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k")) {
+    event.preventDefault();
+    openPalette();
+  }
+});
+document.getElementById("search-button").addEventListener("click", (event) => {
+  event.stopPropagation();
+  openPalette();
+});
+
+window.addEventListener("hashchange", () => { closePalette(); show(); });
 
 async function start() {
   view.replaceChildren(h("p", { class: "loading" }, "loading the catalogue…"));

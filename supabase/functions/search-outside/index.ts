@@ -247,7 +247,15 @@ async function everywhere(link: string) {
         name: ODESLI_PLATFORMS[name][1],
         url: (value as any).url,
       }));
-    return { links, ms: Date.now() - started };
+    // what the link is: title, artist and cover, from the entity it started from
+    const entity = (data.entitiesByUniqueId || {})[data.entityUniqueId] || {};
+    return {
+      links,
+      title: entity.title || null,
+      artist: entity.artistName || null,
+      cover: entity.thumbnailUrl || null,
+      ms: Date.now() - started,
+    };
   } catch (error: any) {
     return { error: error?.name === "AbortError" ? "Odesli didn't answer in time" : `Odesli ${error?.message || error}` };
   }

@@ -3,6 +3,18 @@
 import { data, getObject, searchLive, searchOutside, findEverywhere, sameArtist, water, inRotation } from "./data.js";
 import { h, mi, cover, byline, list, row, dotKey, availabilityText, availabilityDot } from "./ui.js";
 import { readTheme, saveTheme, DEFAULT_ACCENT } from "./theme.js";
+import { openPalette } from "./palette.js";
+
+// small choices kept in this browser: getting started shown or not, which
+// listen services to show
+export function readPrefs() {
+  try { return JSON.parse(localStorage.getItem("mili.prefs") || "{}"); } catch { return {}; }
+}
+function savePrefs(change) {
+  const prefs = { ...readPrefs(), ...change };
+  try { localStorage.setItem("mili.prefs", JSON.stringify(prefs)); } catch { /* storage off */ }
+  return prefs;
+}
 
 const byYearNewest = (a, b) => (b.year || 0) - (a.year || 0) || a.title.localeCompare(b.title);
 
@@ -10,7 +22,10 @@ const byYearNewest = (a, b) => (b.year || 0) - (a.year || 0) || a.title.localeCo
 // Home and search
 // ---------------------------------------------------------------------------
 
-export function home(query) {
+// The results page: what "search everything" in the search box opens.
+// Everything in mili that matches, and, when mili has nothing (or only
+// near-misses), what MusicBrainz, Apple Music, Deezer and Discogs have.
+export function search(query) {
   const results = h("div", { class: "results" });
 
   // results under the search box, updated as you type (the box keeps its focus)
@@ -18,7 +33,7 @@ export function home(query) {
   async function showResults(q) {
     const ticket = ++latest;
     if (!q) {
-      results.replaceChildren(overview());
+      results.replaceChildren(h("p", { class: "count" }, "Press / to search."));
       return;
     }
     // if the answer takes a moment, say so
@@ -87,38 +102,59 @@ export function home(query) {
     }
   }
 
-  let typing;
-  const box = h("input", {
-    class: "search",
-    type: "search",
-    placeholder: "find title, artist or label…",
-    autocomplete: "off",
-    spellcheck: "false",
-    value: query,
-    oninput: (event) => {
-      clearTimeout(typing);
-      typing = setTimeout(() => {
-        const q = event.target.value.trim();
-        history.replaceState(null, "", q ? `#/?q=${encodeURIComponent(q)}` : "#/");
-        showResults(q);
-      }, 180);
-    },
-  });
-  setTimeout(() => box.focus(), 0);
-
-  function overview() {
-    const recent = data.library.items.slice(0, 8).map((i) => data.byId.get(i.id)).filter(Boolean);
-    return h("div", {},
-      recent.length ? h("h2", {}, "Recently added to the library") : null,
-      recent.length ? list(recent) : null,
-      recent.length ? h("p", { class: "count" }, h("a", { href: "#/library" }, `the whole library (${data.library.items.length}) →`)) : null,
-      h("h2", {}, "Labels"),
-      labelGrid(),
-    );
-  }
-
   showResults(query);
-  return h("section", { class: "page home" }, box, results);
+  return h("section", { class: "page search-page" },
+    h("p", { class: "search-head" },
+      "results for ", h("b", {}, `“${query}”`),
+      h("button", { class: "bracket", onclick: () => openPalette(query) }, "[search again]")),
+    results);
+}
+
+// The front page: getting started (until it's hidden in settings), what was
+// added to the library lately, and the labels.
+export function home() {
+  const recent = data.library.items.slice(0, 8).map((i) => data.byId.get(i.id)).filter(Boolean);
+  return h("section", { class: "page home" },
+    gettingStarted(),
+    recent.length ? h("h2", {}, "Recently added to the library") : null,
+    recent.length ? list(recent) : null,
+    recent.length ? h("p", { class: "count" }, h("a", { href: "#/library" }, `the whole library (${data.library.items.length}) →`)) : null,
+    h("h2", { id: "labels" }, "Labels"),
+    labelGrid());
+}
+
+// ▾ getting started: short, with the top bar's icons. Folding it shut is
+// remembered; settings → home hides it altogether.
+function gettingStarted() {
+  const prefs = readPrefs();
+  if (prefs.gettingStarted === false) return null;
+  const go = (href, text) => h("a", { class: "dotted", href }, text);
+  const icon = (name) => mi(name, "inline");
+  const first = data.library.items.find((i) => data.byId.has(i.id));
+  return h("details", {
+    class: "getting-started",
+    open: prefs.gettingStartedOpen !== false,
+    ontoggle: (event) => savePrefs({ gettingStartedOpen: event.target.open }),
+  },
+  h("summary", {}, "getting started", h("a", { class: "info", href: "#/guide", title: "the guide" }, "i")),
+  h("ol", {},
+    h("li", {}, h("button", { class: "dotted", onclick: () => openPalette() }, "search"), " by pressing ", h("kbd", {}, "/"),
+      " or the ", icon("plus"), " in the top bar, in mili and outside it."),
+    h("li", {}, first ? go(`#/release/${first.id}`, "open a release") : "open a release",
+      " to listen wherever you like, or ", h("code", {}, "[buy]"), " it."),
+    h("li", {}, "the library is a ", go("#/library?show=queue", "queue"), " ", icon("queue"), " and a ",
+      go("#/library?show=collection", "collection"), " ", icon("collect"), ". This one is built from a Bandcamp collection."),
+    h("li", {}, "listening from mili puts a release ", go("#/guide", "on rotation"), " ", icon("rotation"),
+      " for 30 days, and waters its plant in the garden."),
+    h("li", {}, "walk the ", go("#/atlas", "atlas"), " ", icon("network"),
+      ": one release in the middle, and what it shares with the rest of the library around it."),
+    h("li", {}, "tend the ", go("#/garden", "garden"), " ", icon("garden"),
+      ": plant the library, shape the ground, and see what you return to grow."),
+    h("li", {}, "browse the ", h("a", {
+      class: "dotted", href: "#/",
+      onclick: (event) => { event.preventDefault(); document.getElementById("labels")?.scrollIntoView({ behavior: "smooth" }); },
+    }, "labels"), " below, choose dark or light in ", go("#/settings", "settings"),
+      ", and read more in the ", go("#/guide", "guide"), " ", icon("menu"), ".")));
 }
 
 // ---------------------------------------------------------------------------
@@ -135,7 +171,8 @@ export async function release(id) {
 
   // the row of listen links, in the platforms' order
   const listen = h("div", { class: "links" });
-  for (const link of obj.listen) {
+  const hiddenServices = new Set(readPrefs().hiddenServices || []);
+  for (const link of obj.listen.filter((l) => !hiddenServices.has(l.platform))) {
     listen.append(
       h("a", {
         class: "link",
@@ -513,15 +550,24 @@ function labelGrid() {
 
 export function settings() {
   const theme = readTheme();
-  const toggle = h("button", {
-    "aria-pressed": String(theme.dark),
-    "aria-label": "dark mode",
-    onclick: () => {
-      theme.dark = !theme.dark;
-      toggle.setAttribute("aria-pressed", String(theme.dark));
-      saveTheme(theme);
-    },
-  });
+  const prefs = readPrefs();
+  const toggle = (on, label, onchange) => {
+    const button = h("button", {
+      "aria-pressed": String(on),
+      "aria-label": label,
+      onclick: () => {
+        const now = button.getAttribute("aria-pressed") !== "true";
+        button.setAttribute("aria-pressed", String(now));
+        onchange(now);
+      },
+    });
+    return h("div", { class: "toggle" }, button, label);
+  };
+  const section = (title, small, open, ...content) =>
+    h("details", { class: "setting-group", open },
+      h("summary", {}, title, small ? h("small", {}, small) : null), ...content);
+
+  // global: dark or light, and the accent
   const picker = h("input", { type: "color", value: theme.accent, "aria-label": "accent colour" });
   const hex = h("input", { type: "text", value: theme.accent, spellcheck: "false", "aria-label": "accent colour as hex" });
   const setAccent = (value) => {
@@ -534,24 +580,134 @@ export function settings() {
   picker.addEventListener("input", () => setAccent(picker.value));
   hex.addEventListener("change", () => setAccent(hex.value.trim()));
 
+  // listen services: which platforms release pages show
+  const hidden = new Set(prefs.hiddenServices || []);
+  const services = data.platforms.filter((pl) => pl.listen && pl.for_releases !== false);
+  const serviceList = h("div", { class: "services" }, services.map((pl) => toggle(!hidden.has(pl.id), pl.name, (on) => {
+    if (on) hidden.delete(pl.id); else hidden.add(pl.id);
+    savePrefs({ hiddenServices: [...hidden] });
+  })));
+
+  // library: counts and export
+  const items = data.library.items.filter((i) => data.byId.has(i.id));
+  const inCollection = items.filter((i) => i.status === "collection").length;
+
+  // garden: save or start over
+  let garden = { plants: {}, marks: [] };
+  try { garden = JSON.parse(localStorage.getItem("mili.garden") || "null") || garden; } catch { /* none */ }
+  const planted = Object.keys(garden.plants || {}).length;
+  const startOver = h("button", {
+    class: "bracket",
+    onclick: () => {
+      if (startOver.dataset.sure) {
+        try { localStorage.removeItem("mili.garden"); } catch { /* storage off */ }
+        startOver.textContent = "[the garden starts over]";
+        startOver.disabled = true;
+      } else {
+        startOver.dataset.sure = "yes";
+        startOver.textContent = "[really? click again to start over]";
+      }
+    },
+  }, "[start over]");
+
   return h(
     "section",
-    { class: "page" },
+    { class: "page settings" },
     h("h1", {}, "settings"),
-    h("div", { class: "setting-group" },
-      h("h3", {}, "global", h("small", {}, "appearance · theme · accent")),
-      h("div", { class: "toggle" }, toggle, "dark mode"),
+    section("global", "appearance · theme · accent", true,
+      toggle(theme.dark, "dark mode", (on) => { theme.dark = on; saveTheme(theme); }),
       h("p", { class: "help" }, "The accent worn by lit library glyphs and the active filter chip."),
       h("div", { class: "accent-row" },
         picker, hex,
         h("button", { class: "plain-button", onclick: () => setAccent(DEFAULT_ACCENT) }, "reset to default")),
       h("div", { class: "preview" }, "preview", mi("collect"), h("span", { class: "chip on" }, "active"))),
-    h("p", { class: "meta" }, "These are kept in this browser."),
-    h("div", { class: "setting-group" },
-      h("h3", {}, "data", h("small", {}, "where it comes from")),
-      h("p", { class: "meta" },
+    section("home", null, true,
+      toggle(prefs.gettingStarted !== false, "show getting started", (on) => savePrefs({ gettingStarted: on })),
+      h("p", { class: "help" }, "The getting-started section on home stays visible until you hide it here.")),
+    section("listen services", null, false,
+      h("p", { class: "help" }, "The platforms release pages show. Hidden ones are still in mili, just not shown."),
+      serviceList),
+    section("library", null, false,
+      h("p", { class: "help" }, `${inCollection} in the collection · ${items.length - inCollection} in the queue.`),
+      h("p", { class: "help" }, "Download the library. JSON keeps everything (status, dates, collages, labels, mili IDs); CSV opens in a spreadsheet."),
+      h("p", { class: "exports" },
+        h("button", { class: "bracket", onclick: () => exportLibrary("json") }, "[export json]"),
+        h("button", { class: "bracket", onclick: () => exportLibrary("csv") }, "[export csv]"))),
+    section("garden", null, false,
+      h("p", { class: "help" }, `${planted} planted · ${(garden.marks || []).length} ground marks, kept in this browser.`),
+      h("p", { class: "help" }, "Save downloads the garden as garden.json; with that file in site/data/ the published site shows it."),
+      h("p", { class: "exports" },
+        h("button", { class: "bracket", onclick: () => download("garden.json", JSON.stringify({ saved_at: new Date().toISOString(), ...garden }, null, 1), "application/json") }, "[save garden.json]"),
+        startOver)),
+    section("data", "where it comes from", false,
+      h("p", { class: "help" },
         `${data.index.length.toLocaleString("en")} objects · data from ${data.meta.exported_at?.slice(0, 10) || "?"}`),
-      (data.meta.sources || []).map((source) => h("p", { class: "meta" }, source))),
+      (data.meta.sources || []).map((source) => h("p", { class: "help" }, source))),
+    h("p", { class: "meta" }, "Settings are kept in this browser."),
+  );
+}
+
+function download(name, text, type) {
+  const a = h("a", { href: URL.createObjectURL(new Blob([text], { type })), download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+
+function exportLibrary(format) {
+  const base = `${location.origin}${location.pathname}`;
+  const rows = data.library.items.filter((i) => data.byId.has(i.id)).map((i) => {
+    const o = data.byId.get(i.id);
+    return {
+      mili_id: o.id, title: o.title, artist: o.artist || "", year: o.year || "", type: o.type || "",
+      labels: (o.labels || []).join("; "), status: i.status, added_on: i.added_on || "",
+      collages: (i.collages || []).join("; "), page: `${base}#/release/${o.id}`,
+    };
+  });
+  if (format === "json") {
+    download("mili-library.json", JSON.stringify({ exported_at: new Date().toISOString(), items: rows }, null, 1), "application/json");
+  } else {
+    const cell = (v) => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+    const columns = Object.keys(rows[0] || { mili_id: "" });
+    const csv = [columns.join(","), ...rows.map((r) => columns.map((c) => cell(r[c])).join(","))].join("\n");
+    download("mili-library.csv", csv, "text/csv");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The guide: how mili works, in folding sections
+// ---------------------------------------------------------------------------
+
+export function guide() {
+  const part = (title, ...paragraphs) =>
+    h("details", { class: "guide-part" }, h("summary", {}, title), ...paragraphs.map((t) => h("p", {}, t)));
+  return h("section", { class: "page guide" },
+    h("h1", {}, "guide"),
+    part("searching",
+      ["Press ", h("kbd", {}, "/"), " anywhere, or the ", mi("plus", "inline"), " in the top bar, to open the search box. Type a title, an artist or a label: mili searches its catalogue as you type, and finds near-misses too, so a typo still lands."],
+      "“search everything” opens a page of results that also looks outside mili, on MusicBrainz, Apple Music, Deezer and Discogs. The top results there fill in every platform they can be heard on.",
+      "Paste a link from Bandcamp, Spotify, Apple Music, Deezer, Tidal, Discogs, MusicBrainz or YouTube to go straight to that release. If mili doesn't have it, the box shows what it is and where else it can be heard."),
+    part("release pages",
+      "The links under the title are where the release can be heard, one per platform. A small note like “deluxe edition” means the link goes to another version of the same release.",
+      ["[buy] opens Bandcamp and Discogs. [refresh links] asks for the release on platforms mili doesn't know yet; new ones are marked “new”."],
+      "“contains” lists the songs, from MusicBrainz or Apple Music. Releases that only exist on Bandcamp show Bandcamp's own player instead.",
+      "The dot at the bottom tells where it can be heard: on Bandcamp and streaming, streaming only, Bandcamp only, or nowhere mili has found yet."),
+    part("queue and collection",
+      ["The library has two parts: the queue ", mi("queue", "inline"), ", for what you want to hear, and the collection ", mi("collect", "inline"), ", for what you have. This library is built from a Bandcamp collection: purchases are in the collection, the wishlist is the queue."],
+      "The library page switches between them, and collages group releases across both."),
+    part("rotation",
+      ["Opening a listen link from mili “waters” the release. Anything watered in the last 30 days is on rotation ", mi("rotation", "inline"), ", lit on its page. The counts are kept in this browser."]),
+    part("labels",
+      "The catalogue starts from 20 labels: every release MusicBrainz knows on each, plus what's on the labels' own Bandcamp pages. A label's page shows how much of it can be heard where."),
+    part("atlas",
+      ["One release sits in the middle of the atlas ", mi("network", "inline"), " with three rings around it: the same artist, the same label or Bandcamp page, and what was added near the same time (or, outside the library, released the same year). Click a dot to move it to the middle; the trail remembers the way back."],
+      "Keys: ← → within a ring, ↑ ↓ between rings, enter to recentre, ⌫ to walk back."),
+    part("garden",
+      ["Plant the library in the garden ", mi("garden", "inline"), ": drag releases up from the tray onto the ground, and shape the ground with ridges, pools, paths, rings, marks, words and drawn outlines."],
+      "A plant's family comes from the release's genre: ambient is a fern, techno a crystal, jazz a climber. It grows each time you listen to the release from mili, blooms while it's on rotation, and fades when it's left alone for half a year. Ridges are stone, pools moss, outlines loam, rings clay, paths sand; on the ground its species likes, a plant grows a little bigger.",
+      "Click a plant to change its species, colours or variation, to water it, or to move or uproot it. “save” downloads the garden as a file; settings has the same, and a way to start over."),
+    part("keyboard",
+      ["/ or ⌘K: search · ↑ ↓ and enter in the search box · esc closes · in the atlas ← → ↑ ↓ enter ⌫ · in the garden ⌘Z undoes."]),
   );
 }
 
