@@ -14,6 +14,7 @@
 //   #/collage/<id>         one collage: a list of releases and mixes, with a note
 //   #/sign-in              signing in (to write notes and make collages)
 //   #/about                what is mili (written in site/about.md)
+//   #/profile              your collages and notes (signed in)
 // Press / (or ⌘K, or the + in the top bar) to open the search box (palette.js).
 // Because it's all after "#", the site is just files: no server is needed.
 
@@ -24,7 +25,7 @@ import * as pages from "./pages.js";
 import { atlas, walkBack } from "./atlas.js";
 import { garden } from "./garden.js";
 import { openPalette, closePalette } from "./palette.js";
-import { loadCollages, onChange, canSave, me } from "./account.js";
+import { loadCollages, onChange, canSave, me, signOut } from "./account.js";
 
 applyTheme();     // before anything is drawn, so there's no flash of the wrong theme
 
@@ -68,24 +69,35 @@ async function show() {
     else if (page === "collage") content = await pages.collage(arg);
     else if (page === "sign-in") content = pages.signInPage(params);
     else if (page === "about") content = await pages.aboutPage();
+    else if (page === "profile") {
+      if (!me()) { location.replace(`#/sign-in?back=${encodeURIComponent("#/profile")}`); return; }
+      content = await pages.profile();
+    }
     else content = pages.notFound("This page doesn't exist.");
   } catch (error) {
     console.error(error);
     content = pages.notFound(`Something went wrong: ${error.message}`);
   }
-  // the menu's last line: "sign in", or "account" when signed in
+  // the menu: "profile" and "logout" when signed in, "sign in" when not
+  document.getElementById("menu-profile").hidden = !(canSave() && me());
   const account = document.getElementById("menu-account");
-  if (account) {
-    account.hidden = !canSave();
-    account.textContent = me() ? "account" : "sign in";
-    account.href = name === "sign-in" ? location.hash : `#/sign-in?back=${encodeURIComponent(location.hash || "#/")}`;
-  }
+  account.hidden = !canSave();
+  account.textContent = me() ? "logout" : "sign in";
+  account.href = me() ? "#/" : name === "sign-in" ? location.hash : `#/sign-in?back=${encodeURIComponent(location.hash || "#/")}`;
   view.replaceChildren(content);
   window.scrollTo(0, 0);
 }
 
 // The menu on the right opens and closes; a click anywhere else closes it,
 // and closes small menus like [buy].
+// "logout": sign out, and go to the front page
+document.getElementById("menu-account").addEventListener("click", async (event) => {
+  if (!me()) return;                  // "sign in": just follow the link
+  event.preventDefault();
+  location.hash = "#/";
+  await signOut();
+});
+
 menuButton.addEventListener("click", (event) => {
   event.stopPropagation();
   menu.hidden = !menu.hidden;

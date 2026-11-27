@@ -584,6 +584,13 @@ kbd { font-family: var(--mono); font-size: 0.85em; border: 1px solid var(--line)
 .release h1 .bracket { font-family: var(--mono); font-size: 0.95rem; font-weight: 400; }
 .collage-cover.empty { display: flex; align-items: center; justify-content: center; color: var(--faint); }
 .collage-cover.empty .mi { width: 32px; height: 32px; }
+.collage-cover.small { gap: 1px; }
+.collage-cover.small.empty .mi { width: 16px; height: 16px; }
+.profile .chips { margin-top: 1rem; }
+.profile-notes { border-top: 1px solid var(--line); }
+.profile-note { border-bottom: 1px solid var(--line); }
+.profile-note .row { border-bottom: 0; }
+.profile-note .note-body { margin: 0 0 1rem 4.4rem; color: var(--dim); font-size: 0.98rem; }
 .collage-name { display: block; width: 100%; box-sizing: border-box; font: inherit; font-size: 2rem; font-weight: 600;
                 background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 0.4rem 0.8rem; outline: none; }
 .set-head { display: flex; align-items: baseline; gap: 0.9rem; font-size: 1.35rem; font-weight: 600; margin: 2.6rem 0 0.8rem; }

@@ -7,13 +7,14 @@
 //                       your collages, take it out, or start a new one
 //   collageLine(id)     "in chill · late night" under the page
 //   collagePage(id)     #/collage/<id>: the collage, its note, what's in it
+//   profilePage()       #/profile: your collages and your notes
 
 import { data } from "./data.js";
 import { h, mi, cover, row } from "./ui.js";
 import { notesBlock } from "./notes.js";
 import {
   canSave, me, userData, isMine, myCollages, collageById, collagesWith, loadCollages,
-  createCollage, updateCollage, deleteCollage, addToCollage, removeFromCollage, onChange,
+  createCollage, updateCollage, deleteCollage, addToCollage, removeFromCollage, onChange, myNotes,
 } from "./account.js";
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -110,10 +111,21 @@ export function collageLine(objectId) {
 // ---------------------------------------------------------------------------
 
 // A 2 × 2 of the first covers, or the collage icon when it's empty
-function collageCover(collage) {
+function collageCover(collage, size = "large") {
   const objects = collage.items.map((id) => data.byId.get(id)).filter(Boolean).slice(0, 4);
-  if (!objects.length) return h("div", { class: "cover large collage-cover empty" }, mi("collage"));
-  return h("div", { class: "cover large collage-cover" }, objects.map((o) => cover(o, "small")));
+  if (!objects.length) return h("div", { class: `cover ${size} collage-cover empty` }, mi("collage"));
+  return h("div", { class: `cover ${size} collage-cover` }, objects.map((o) => cover(o, "small")));
+}
+
+// One collage as a row in a list (on the profile page); "meta" replaces
+// its public/private label (for a note on it, the note's own)
+function collageRow(collage, meta = null) {
+  return h("a", { class: "row", href: `#/collage/${collage.id}` },
+    collageCover(collage, "small"),
+    h("div", { class: "row-text" },
+      h("div", { class: "row-title" }, collage.name, h("span", { class: "badge" }, "collage")),
+      h("div", { class: "byline" }, plural(collage.items.length, "item", "items"))),
+    h("div", { class: "row-meta" }, h("span", { class: "added" }, meta ?? (collage.is_public ? "public" : "private"))));
 }
 
 export async function collagePage(id) {
@@ -219,6 +231,52 @@ export async function collagePage(id) {
       h("span", { class: "n" }, [mine ? "yours" : "shared", collage.items.length].join(" · "))),
     items);
   return page;
+}
+
+// ---------------------------------------------------------------------------
+// The profile page: who you're signed in as, your collages, your notes
+// ---------------------------------------------------------------------------
+
+export async function profilePage() {
+  const user = me();
+  if (!userData.loaded) await loadCollages();
+  const mine = myCollages();
+  const notes = h("div", { class: "profile-notes" }, h("p", { class: "count" }, "loading your notes…"));
+
+  (async () => {
+    let rows;
+    try {
+      rows = await myNotes();
+    } catch (error) {
+      notes.replaceChildren(h("p", { class: "empty" }, `Your notes couldn't be loaded: ${error.message}`));
+      return;
+    }
+    const shown = rows.map((n) => {
+      // what the note is on: a release or mix, or a collage
+      let what = null;
+      if (n.about.startsWith("collage:")) {
+        const collage = collageById(n.about.slice(8));
+        if (collage) what = collageRow(collage, n.is_public ? "public" : "private");
+      } else if (data.byId.has(n.about)) {
+        what = row(data.byId.get(n.about), h("span", { class: "added" }, n.is_public ? "public" : "private"));
+      }
+      if (!what) return null;
+      const text = n.body.length > 240 ? `${n.body.slice(0, 240).trim()}…` : n.body;
+      return h("div", { class: "profile-note" }, what, h("p", { class: "note-body" }, text));
+    }).filter(Boolean);
+    notes.replaceChildren(...(shown.length ? shown
+      : [h("p", { class: "empty" }, "No notes yet. The pencil on a release, a mix or a collage starts one.")]));
+  })();
+
+  return h("section", { class: "page profile" },
+    h("h1", {}, "profile"),
+    h("p", { class: "byline" }, user?.email || ""),
+    h("h2", {}, "Collages"),
+    mine.length ? h("div", { class: "list" }, mine.map(collageRow))
+      : h("p", { class: "empty" }, "No collages yet. The collage icon on a release or mix starts one."),
+    h("div", { class: "chips" }, newCollageChip()),
+    h("h2", {}, "Notes"),
+    notes);
 }
 
 function missing(text) {

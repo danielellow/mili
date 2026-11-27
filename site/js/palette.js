@@ -1,7 +1,7 @@
 // mili: the search box, opened with "/" (or ⌘K, or the + in the top bar).
 //
 // It's the one place to search. As you type it shows:
-//   - "go to" places that match: home, queue, collection, atlas, garden …
+//   - "go to" places that match: home, queue, collection, settings
 //   - releases in mili that match, live from Supabase (or from the browser)
 //   - "search everything for …": the full results page, which also looks
 //     outside mili (MusicBrainz, Apple Music, Deezer, Discogs)
@@ -11,19 +11,13 @@
 // ↑ ↓ choose, Enter opens, Esc closes.
 
 import { data, normalize, searchLive, findEverywhere, lookUpMix, mixDate, mixLength, findInMili } from "./data.js";
-import { h, mi } from "./ui.js";
-import { userData } from "./account.js";
+import { h } from "./ui.js";
 
 const PLACES = [
-  { name: "home", href: "#/", icon: "logomark", words: "home catalogue labels start" },
-  { name: "queue", href: "#/library?show=queue", icon: "queue", words: "queue library" },
-  { name: "collection", href: "#/library?show=collection", icon: "collect", words: "collection library" },
-  { name: "library", href: "#/library", icon: "collect", words: "library all" },
-  { name: "atlas", href: "#/atlas", icon: "network", words: "atlas rings" },
-  { name: "garden", href: "#/garden", icon: "garden", words: "garden plants" },
-  { name: "settings", href: "#/settings", icon: "menu", words: "settings theme dark light accent export" },
-  { name: "guide", href: "#/guide", icon: "menu", words: "guide help how" },
-  { name: "about", href: "#/about", icon: "logomark", words: "about what is mili" },
+  { name: "home", href: "#/", words: "home start labels" },
+  { name: "queue", href: "#/library?show=queue", words: "queue library" },
+  { name: "collection", href: "#/library?show=collection", words: "collection library" },
+  { name: "settings", href: "#/settings", words: "settings theme dark light accent account sign" },
 ];
 
 let box = null;   // the open palette, if any
@@ -59,7 +53,7 @@ export function openPalette(startWith = "") {
         onmouseenter: () => { chosen = i; mark(); },
         onclick: (e) => { if (r.run) { e.preventDefault(); r.run(); } closePalette(); },
       },
-      r.cover !== undefined ? smallCover(r) : r.icon ? mi(r.icon, "pal-icon") : h("span", { class: "pal-icon blank" }),
+      r.cover !== undefined ? smallCover(r) : null,
       h("span", { class: "pal-text" }, h("span", { class: "pal-title" }, r.title), r.sub ? h("span", { class: "pal-sub" }, r.sub) : null),
       h("span", { class: "pal-action" }, r.action));
       return node;
@@ -76,11 +70,7 @@ export function openPalette(startWith = "") {
     const words = normalize(q);
     const places = PLACES
       .filter((p) => !words || words.split(" ").every((w) => p.words.includes(w) || p.name.includes(w)))
-      .map((p) => ({ title: p.name, href: p.href, icon: p.icon, action: "go to" }))
-      // collages (yours, and public ones) by name
-      .concat(words ? userData.collages
-        .filter((c) => words.split(" ").every((w) => normalize(c.name).includes(w)))
-        .map((c) => ({ title: c.name, sub: `collage · ${c.items.length}`, href: `#/collage/${c.id}`, icon: "collage", action: "go to" })) : []);
+      .map((p) => ({ title: p.name, href: p.href, action: "go to" }));
 
     if (!q) { rows = places; chosen = 0; draw(); return; }
 
@@ -102,7 +92,7 @@ export function openPalette(startWith = "") {
 
     await new Promise((r) => setTimeout(r, 140));      // wait for a pause in typing
     if (ticket !== latest) return;
-    const answer = await searchLive(q, 7);
+    const answer = await searchLive(q, 6);
     if (ticket !== latest) return;
     const releases = answer.results.map((o) => ({
       title: o.title, sub: [o.artist, o.year].filter(Boolean).join(" · "), cover: o.cover || null, id: o.id,
@@ -235,7 +225,7 @@ async function lookUpLink(url) {
       const title = answer.title || "this release";
       return [
         { title, sub: [answer.artist, "not in mili yet"].filter(Boolean).join(" · "), cover: answer.cover ?? null, kind: "quiet", action: "" },
-        ...answer.links.map((l) => ({ title: l.name, href: l.url, external: true, icon: null, action: "listen ↗" })),
+        ...answer.links.map((l) => ({ title: l.name, href: l.url, external: true, action: "listen ↗" })),
       ];
     }
   }

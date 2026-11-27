@@ -219,6 +219,12 @@ export async function notesAbout(about) {
   return rest(`notes?about=eq.${encodeURIComponent(about)}&select=owner,about,body,is_public,updated_at&order=updated_at.desc`);
 }
 
+// Every note you've written, newest first (for the profile page)
+export async function myNotes() {
+  if (!session) return [];
+  return rest(`notes?owner=eq.${session.user.id}&select=about,body,is_public,updated_at&order=updated_at.desc`);
+}
+
 export async function saveNote(about, body, isPublic) {
   if (!session) throw new Error("sign in to write notes");
   if (!body.trim()) {

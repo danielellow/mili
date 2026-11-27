@@ -5,11 +5,12 @@ import { h, mi, cover, byline, list, row, dotKey, availabilityText, availability
 import { readTheme, saveTheme, DEFAULT_ACCENT } from "./theme.js";
 import { openPalette } from "./palette.js";
 import { notesBlock } from "./notes.js";
-import { collageButton, collageLine, collagePage, collageChips, newCollageChip, bringInFileCollages } from "./collages.js";
+import { collageButton, collageLine, collagePage, profilePage, collageChips, newCollageChip, bringInFileCollages } from "./collages.js";
 import { canSave, me, signIn, signOut, userData, collagesWith } from "./account.js";
 
-// #/collage/<id> (the page itself is in collages.js)
+// #/collage/<id> and #/profile (the pages themselves are in collages.js)
 export const collage = collagePage;
+export const profile = profilePage;
 
 // small choices kept in this browser: getting started shown or not, which
 // listen services to show
@@ -957,7 +958,7 @@ export function guide() {
     part("notes and collages",
       ["The pencil ", mi("note", "inline"), " on a release, a mix or a collage opens its notes. Write anything, then save. A note starts private, so only you see it; click “private” to make it public."],
       ["The collage icon ", mi("collage", "inline"), " on a page adds it to one of your collages, or starts a new one. A collage is a list of releases and mixes, like a channel on Are.na, with a page and a note of its own. Collages start public; [edit] on a collage renames it, makes it private, or deletes it."],
-      "Writing needs a sign-in (settings → account). Without one, you can still read the public notes and collages."),
+      "Writing needs a sign-in (the menu → sign in). Your profile, in the same menu, lists your collages and every note you've written. Without signing in, you can still read the public notes and collages."),
     part("rotation",
       ["Opening a listen link from mili “waters” the release. Anything watered in the last 30 days is on rotation ", mi("rotation", "inline"), ", lit on its page. The counts are kept in this browser."]),
     part("labels",
