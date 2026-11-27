@@ -15,18 +15,32 @@
 //     top), pools are moss, drawn outlines are loam, rings are clay, paths are
 //     sand and open ground is meadow. On the ground its species likes, a plant
 //     grows a little bigger.
-//   - The garden is kept in this browser as you work ("mili.garden").
-//     "save" downloads it as garden.json; put that file in site/data/ and the
-//     published site shows your garden to anyone who hasn't started their own.
+//   - Signed in, the garden belongs to your account (the gardens table in
+//     Supabase), saved a moment after each change, so it's the same on every
+//     device; each guest trying the beta gets their own, starting empty. The
+//     first time you sign in with your own account, the garden this browser
+//     kept before is moved into it.
+//   - Not signed in, it's kept in this browser ("mili.garden"), starting from
+//     the published one: "save" downloads it as garden.json, and with that
+//     file in site/data/ the published site shows it.
+//   - Nothing is for good: undo, drag a plant back down onto the tray (or
+//     "uproot") to unplant it, "automatic" on the card for its own species
+//     and growth, "remove mark" for ground marks, and "start over".
 
 import { data, normalize, water } from "./data.js";
 import { h } from "./ui.js";
+import { canSave, me, loadMyGarden, saveMyGarden } from "./account.js";
 import {
   el, seeded, drawPlant, defaultSpecies, variation, growthWord,
   SPECIES, FAMILIES, speciesByNo, familyLabel,
 } from "./plants.js";
 
 const STORE = "mili.garden";
+let pendingSave = null;       // the open garden's "save now", for when the page changes
+
+// app.js calls this before showing another page; closing the tab does it too
+export function flushGarden() { pendingSave?.(); }
+window.addEventListener("pagehide", flushGarden);
 const DAY = 24 * 60 * 60 * 1000;
 const TOOLS = ["ridge", "pool", "path", "ring", "mark", "inscription", "draw"];
 
@@ -80,10 +94,13 @@ function ellipsePoints(cx, cy, rx, ry, rnd, wobble = 0.12, n = 22) {
   return pts;
 }
 
+// Every mark has an invisible "hit" shape over its whole area, so a click
+// anywhere on it chooses it (not only on its thin lines)
 function drawMark(m, defs) {
   const g = el("g", { class: `mark ${m.kind}`, "data-mark": m.id });
   const rnd = seeded(m.id);
   if (m.kind === "ridge") {
+    g.append(el("ellipse", { class: "hit", cx: m.cx, cy: m.cy, rx: m.rx, ry: m.ry }));
     for (const s of [1, 0.66, 0.34]) g.append(el("path", { d: smooth(ellipsePoints(m.cx, m.cy, m.rx * s, m.ry * s, rnd, 0.18), true) }));
   } else if (m.kind === "pool") {
     const clip = `clip-${m.id}`;
@@ -94,11 +111,11 @@ function drawMark(m, defs) {
     }
     g.append(lines, el("ellipse", { class: "hit", cx: m.cx, cy: m.cy, rx: m.rx, ry: m.ry }));
   } else if (m.kind === "ring") {
-    g.append(el("ellipse", { cx: m.cx, cy: m.cy, rx: m.rx, ry: m.ry }));
+    g.append(el("ellipse", { class: "hit", cx: m.cx, cy: m.cy, rx: m.rx, ry: m.ry }), el("ellipse", { cx: m.cx, cy: m.cy, rx: m.rx, ry: m.ry }));
   } else if (m.kind === "path") {
     g.append(el("path", { d: smooth(m.points), class: "dashed" }), el("path", { d: smooth(m.points), class: "hit-line" }));
   } else if (m.kind === "draw") {
-    g.append(el("path", { d: smooth(m.points, true) }));
+    g.append(el("path", { class: "hit", d: smooth(m.points, true) }), el("path", { d: smooth(m.points, true) }));
   } else if (m.kind === "mark") {
     const r = 4;
     for (const a of [0, 60, 120]) {
@@ -107,7 +124,9 @@ function drawMark(m, defs) {
     }
     g.append(el("circle", { class: "hit", cx: m.x, cy: m.y, r: 6 }));
   } else if (m.kind === "inscription") {
-    g.append(el("text", { x: m.x, y: m.y, "text-anchor": "middle" }, m.text.toUpperCase()));
+    const width = Math.max(12, m.text.length * 3.4);       // roughly the width of the words
+    g.append(el("rect", { class: "hit", x: m.x - width / 2 - 2, y: m.y - 6, width: width + 4, height: 8.5 }),
+      el("text", { x: m.x, y: m.y, "text-anchor": "middle" }, m.text.toUpperCase()));
   }
   return g;
 }
@@ -146,7 +165,41 @@ function groundAt(marks, x, y) {
 // Keeping the garden
 // ---------------------------------------------------------------------------
 
+const tidy = (g) => ({ plants: g?.plants || {}, marks: g?.marks || [] });
+const hasAnything = (g) => Boolean(g && (Object.keys(g.plants || {}).length || (g.marks || []).length));
+const localKey = (user) => (user ? `${STORE}.${user.id}` : STORE);
+function readLocal(key) {
+  try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; }
+}
+function writeLocal(key, garden) {
+  try { localStorage.setItem(key, JSON.stringify(garden)); } catch { /* storage off */ }
+}
+
 async function loadGarden() {
+  const user = canSave() ? me() : null;
+  if (user) {
+    // 1. your account's garden
+    let row;
+    try {
+      row = await loadMyGarden();
+    } catch {
+      // Supabase didn't answer: this browser's copy of it, if there is one
+      const copy = readLocal(localKey(user));
+      return { garden: tidy(copy), from: "offline" };
+    }
+    if (row) return { garden: tidy(row.garden), from: "account" };
+    // 2. never saved yet: your own account takes the garden this browser kept
+    //    before accounts (a guest starts empty instead)
+    const before = readLocal(STORE);
+    if (!user.guest && hasAnything(before)) {
+      try {
+        await saveMyGarden(tidy(before));
+        try { localStorage.removeItem(STORE); } catch { /* storage off */ }
+        return { garden: tidy(before), from: "moved" };
+      } catch { /* not saved: it's kept where it is and tried again next time */ }
+    }
+    return { garden: tidy(null), from: "new" };
+  }
   try {
     const saved = JSON.parse(localStorage.getItem(STORE) || "null");
     if (saved && (Object.keys(saved.plants || {}).length || (saved.marks || []).length)) {
@@ -210,9 +263,30 @@ export async function garden(params) {
     };
   }
 
+  // Saving: this browser's copy straight away, and the account a moment after
+  // the last change (so a drag isn't a hundred saves)
+  const user = canSave() ? me() : null;
+  const savedState = h("span", { class: "g-faint g-saved" });
+  let saveTimer = null;
+  async function flush(keepalive = false) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    try {
+      await saveMyGarden(state, { keepalive });
+      savedState.textContent = "saved";
+    } catch (error) {
+      savedState.textContent = `not saved: ${error.message}`;
+    }
+  }
   const save = () => {
-    try { localStorage.setItem(STORE, JSON.stringify(state)); } catch { /* storage off */ }
+    writeLocal(localKey(user), state);
+    if (!user) return;
+    savedState.textContent = "saving…";
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(flush, 800);
   };
+  // leaving the page (another page, or closing it) saves what's waiting
+  pendingSave = () => { if (saveTimer) flush(true); };
   const remember = () => {
     history.push(JSON.stringify(state));
     if (history.length > 80) history.shift();
@@ -245,6 +319,25 @@ export async function garden(params) {
   const counts = h("span", { class: "g-counts" });
   const findBox = h("input", { type: "search", class: "g-find", placeholder: "find", value: "" });
   const undoButton = h("button", { class: "g-button", disabled: true, onclick: undo }, "undo");
+  // start over: everything off the ground (undo brings it back)
+  const startOver = h("button", { class: "g-button", title: "unplant everything and clear the ground" }, "start over");
+  startOver.addEventListener("click", () => {
+    if (!startOver.dataset.sure) {
+      startOver.dataset.sure = "yes";
+      startOver.textContent = "really? click again";
+      setTimeout(() => { delete startOver.dataset.sure; startOver.textContent = "start over"; }, 4000);
+      return;
+    }
+    delete startOver.dataset.sure;
+    startOver.textContent = "start over";
+    remember();
+    state.plants = {};
+    state.marks = [];
+    selectedMark = null;
+    closeCard();
+    save();
+    render();
+  });
   const groundToggle = h("button", { class: "g-button on", title: "show or hide the ground marks", onclick: () => { showGround = !showGround; groundToggle.classList.toggle("on", showGround); render(); } }, "ground");
   const plantToggle = h("button", { class: "g-button on", title: "show or hide the plants", onclick: () => { showPlants = !showPlants; plantToggle.classList.toggle("on", showPlants); render(); } }, "planted");
   const legend = h("div", { class: "g-legend", hidden: true },
@@ -259,16 +352,21 @@ export async function garden(params) {
       "change it on the plant's card. On the ground its species likes, it grows a little bigger: ",
       "ridges are stone (snow at the top), pools moss, drawn outlines loam, rings clay, paths sand, open ground meadow."),
     h("p", { class: "g-note" },
-      "The garden is kept in this browser. “save” downloads it as garden.json; with that file in site/data/ the published site shows it.",
-      from === "published" ? " You're looking at the published garden; your changes stay in this browser." : ""));
+      user
+        ? "Your garden is saved to your account. “save” downloads it as garden.json; with that file in site/data/ the published site shows it to visitors."
+        : "The garden is kept in this browser. “save” downloads it as garden.json; with that file in site/data/ the published site shows it.",
+      from === "published" ? " You're looking at the published garden; your changes stay in this browser." : "",
+      from === "moved" ? " The garden this browser kept before is now in your account." : ""),
+    h("p", { class: "g-note" },
+      "Nothing is for good: undo (⌘Z), drag a plant back down onto the tray to unplant it, “automatic” on a plant's card, “remove mark”, and “start over”."));
   const top = h("div", { class: "g-top" },
     h("b", { class: "g-tag" }, "GARDEN"), h("span", { class: "g-mode" }, "tend"),
-    findBox, counts,
+    findBox, counts, savedState,
     h("span", { class: "g-spacer" }),
     h("button", { class: "g-button", title: "zoom out", onclick: () => zoomBy(1 / 1.3) }, "−"),
     h("button", { class: "g-button", title: "zoom in", onclick: () => zoomBy(1.3) }, "+"),
     h("button", { class: "g-button", onclick: fit }, "fit"),
-    undoButton, groundToggle, plantToggle,
+    undoButton, startOver, groundToggle, plantToggle,
     h("button", { class: "g-button", onclick: () => { legend.hidden = !legend.hidden; } }, "legend"),
     h("button", { class: "g-button", title: "download this garden as garden.json", onclick: download }, "save"));
 
@@ -276,8 +374,16 @@ export async function garden(params) {
   const toolButtons = TOOLS.map((name) => h("button", {
     class: "g-tool", "data-tool": name, onclick: () => pickTool(name),
   }, toolIcon(name), h("span", {}, name)));
+  const removeMark = h("button", { class: "g-button", hidden: true, title: "remove the chosen mark (or press ⌫)" }, "remove mark");
+  removeMark.addEventListener("click", () => {
+    if (!selectedMark) return;
+    remember();
+    state.marks = state.marks.filter((m) => m.id !== selectedMark);
+    selectedMark = null;
+    save(); render();
+  });
   const groundBar = h("div", { class: "g-groundbar" },
-    h("b", {}, "ground marks"), toolButtons, hint, h("span", { class: "g-spacer" }),
+    h("b", {}, "ground marks"), toolButtons, hint, removeMark, h("span", { class: "g-spacer" }),
     h("button", { class: "g-button", onclick: () => setMode("tend") }, "done"));
   const groundButton = h("button", { class: "g-button g-ground-open", onclick: () => setMode("ground") }, "ground marks");
   const status = h("span", { class: "g-faint" }, "drag up to plant");
@@ -322,6 +428,7 @@ export async function garden(params) {
     plantLayer.replaceChildren();
     groundLayer.style.display = showGround ? "" : "none";
     plantLayer.style.display = showPlants ? "" : "none";
+    removeMark.hidden = !selectedMark;
     for (const m of state.marks) {
       const node = drawMark(m, defs);
       if (m.id === selectedMark) node.classList.add("selected");
@@ -428,7 +535,7 @@ export async function garden(params) {
         return;
       }
       if (tool === "inscription") { askInscription(event, at); return; }
-      drag = { kind: "draw", tool, start: at, points: [at] };
+      drag = { kind: "draw", tool, start: at, points: [at], overMark: markNode?.dataset.mark || null };
       return;
     }
     if (plantHit && showPlants) {
@@ -454,6 +561,10 @@ export async function garden(params) {
       spot.x = drag.from.x + at[0] - drag.start[0];
       spot.y = drag.from.y + at[1] - drag.start[1];
       drag.node.setAttribute("transform", `translate(${spot.x.toFixed(1)} ${spot.y.toFixed(1)})`);
+      // over the tray: let go to unplant it
+      drag.overTray = event.clientY > tray.getBoundingClientRect().top;
+      tray.classList.toggle("g-drop", drag.overTray);
+      status.textContent = drag.overTray ? "let go to unplant it" : "drag up to plant";
     } else if (drag.kind === "mark") {
       const m = state.marks.find((x) => x.id === drag.id);
       moveMark(m, at[0] - drag.last[0], at[1] - drag.last[1]);
@@ -473,6 +584,17 @@ export async function garden(params) {
     const done = drag;
     drag = null;
     preview.replaceChildren();
+    tray.classList.remove("g-drop");
+    if (done.kind === "plant" && done.moved && done.overTray) {
+      // dropped on the tray: back to unplanted (undo plants it again)
+      state.plants[done.id] = done.from;
+      remember();
+      delete state.plants[done.id];
+      status.textContent = "drag up to plant";
+      if (cardId === done.id) closeCard();
+      save(); render();
+      return;
+    }
     if (done.kind === "plant") {
       if (done.moved) {
         state.plants[done.id].x = Math.round(state.plants[done.id].x);
@@ -490,6 +612,7 @@ export async function garden(params) {
     } else if (done.kind === "draw") {
       const mark = markFrom(done);
       if (mark) { remember(); state.marks.push(mark); save(); render(); }
+      else if (done.overMark) { selectedMark = done.overMark; render(); }   // a click on a mark: choose it
     }
   });
 
@@ -592,7 +715,11 @@ export async function garden(params) {
     const v = variation(look.seed);
     const cover = smallCover(obj.cover);
 
-    const growthLabel = h("div", { class: "gc-growth" }, `${growthWord(look.growth)} · ${look.growth}%`);
+    const growthLabel = h("div", { class: "gc-growth" }, `${growthWord(look.growth)} · ${look.growth}%`,
+      p.base !== undefined ? h("button", {
+        class: "gc-reset", title: "back to growing by itself (from the library and watering)",
+        onclick: () => { remember(); delete p.base; save(); render(); showCard(id); },
+      }, "automatic") : null);
     let slid = false;
     const slider = h("input", {
       type: "range", min: 0, max: 100, value: look.growth, class: "gc-slider",
@@ -600,7 +727,7 @@ export async function garden(params) {
         if (!slid) { remember(); slid = true; }
         const value = Number(event.target.value);
         p.base = value - look.cans * 10;
-        growthLabel.textContent = `${growthWord(value)} · ${value}%`;
+        growthLabel.firstChild.textContent = `${growthWord(value)} · ${value}%`;
         save(); render();
       },
       onchange: () => { slid = false; showCard(id); },
@@ -631,7 +758,12 @@ export async function garden(params) {
         h("div", { class: "gc-names" },
           h("div", { class: "gc-sname" }, species.name),
           h("div", { class: "gc-artist" }, `${familyLabel(species.family)} · no. ${String(species.no).padStart(4, "0")}`)),
-        h("button", { class: "gc-change", onclick: () => openChooser(id) }, "CHANGE")),
+        h("div", { class: "gc-species-buttons" },
+          h("button", { class: "gc-change", onclick: () => openChooser(id) }, "CHANGE"),
+          p.species !== undefined ? h("button", {
+            class: "gc-reset", title: `back to its own species, from the genre`,
+            onclick: () => { remember(); delete p.species; save(); render(); showCard(id); },
+          }, "automatic") : null)),
       growthLabel,
       slider,
       h("dl", { class: "gc-facts" },
@@ -708,16 +840,16 @@ export async function garden(params) {
     mode = name;
     root.classList.toggle("drawing", mode === "ground");
     root.querySelector(".g-mode").textContent = mode === "ground" ? "shape" : "tend";
-    if (mode === "ground" && !tool) pickTool("ridge");
+    if (mode === "ground") pickTool(null);
     if (mode === "tend") { tool = null; selectedMark = null; render(); }
   }
   function pickTool(name) {
     tool = tool === name ? null : name;
     for (const b of toolButtons) b.classList.toggle("on", b.dataset.tool === tool);
-    hint.textContent = !tool ? "drag a mark to move it · ⌫ removes the chosen mark"
+    hint.textContent = !tool ? "choose a tool to draw · click a mark to choose it, drag to move it"
       : tool === "mark" ? "click the ground to place a mark"
         : tool === "inscription" ? "click the ground, write, then enter"
-          : "drag on the ground to draw · alt-drag a mark to move it · ⌫ removes the chosen mark";
+          : "drag on the ground to draw · click a mark to choose it · alt-drag a mark to move it";
   }
 
   findBox.addEventListener("input", () => {

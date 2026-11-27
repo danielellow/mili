@@ -162,7 +162,7 @@ export async function collagePage(id) {
 
   // --- the cover, and "set cover"
   const coverBox = h("div", { class: "collage-cover-box" });
-  const drawCover = () => coverBox.replaceChildren(collageCover(collage), mine ? coverPicker() : null);
+  const drawCover = () => coverBox.replaceChildren(...[collageCover(collage), mine ? coverPicker() : null].filter(Boolean));
 
   function coverPicker() {
     const panel = h("div", { class: "menu cover-menu", hidden: true });
@@ -198,7 +198,7 @@ export async function collagePage(id) {
     });
     function drawPanel() {
       const art = collage.items.map((itemId) => data.byId.get(itemId)).filter((o) => o?.cover);
-      panel.replaceChildren(
+      panel.replaceChildren(...[    // (empty spots left out, or they'd show as "null")
         h("button", { class: "cover-upload", onclick: () => file.click() }, "upload an image…"),
         art.length ? h("p", { class: "menu-head" }, "or an item's art") : null,
         art.length ? h("div", { class: "cover-choices" }, art.map((o) => {
@@ -207,7 +207,7 @@ export async function collagePage(id) {
           return pick;
         })) : null,
         collage.cover ? h("button", { class: "bracket cover-reset", onclick: () => choose(null, "saving…") }, "[back to the first four covers]") : null,
-        status, file);
+        status, file].filter(Boolean));
     }
     return h("div", { class: "cover-pick" }, bar, panel);
   }
@@ -389,7 +389,8 @@ export async function profilePage() {
 
   return h("section", { class: "page profile" },
     h("h1", {}, "profile"),
-    h("p", { class: "byline" }, user?.email || ""),
+    h("p", { class: "byline" }, user?.guest ? "a guest, trying the beta" : user?.email || ""),
+    user?.guest ? h("p", { class: "help" }, "Your notes and collages are saved to a guest account that belongs to this browser. Logging out ends it, so stay signed in to keep them.") : null,
     h("h2", {}, "Collages"),
     mine.length ? h("div", { class: "list" }, mine.map((c) => collageRow(c)))
       : h("p", { class: "empty" }, "No collages yet. The collage icon on a release or mix starts one."),
@@ -406,10 +407,11 @@ function missing(text) {
 // For the library page and settings
 // ---------------------------------------------------------------------------
 
-// The collage chips on the library page: yours first, then others' public ones
+// The collage chips on the library page: yours when signed in (so friends
+// trying the beta don't fill it up), the public ones when not
 export function collageChips() {
   if (!canSave()) return [];
-  const all = [...myCollages(), ...userData.collages.filter((c) => !isMine(c))];
+  const all = me() ? myCollages() : userData.collages;
   return all.map((c) => h("a", { class: "chip collage", href: `#/collage/${c.id}`, title: c.is_public ? "public" : "private" },
     mi("collage", "small"), `${c.name} ${c.items.length}`, c.is_public ? null : mi("lock", "small")));
 }

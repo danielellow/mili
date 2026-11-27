@@ -47,7 +47,12 @@ candidates as (
                      || coalesce('?i=' || nullif(regexp_extract(c ->> '$.trackViewUrl', '[?&]i=(\d+)', 1), ''), '')
             else split_part(c ->> '$.collectionViewUrl', '?', 1)
         end as url,
-        nullif(left(c ->> '$.releaseDate', 10), '') as apple_release_date
+        nullif(left(c ->> '$.releaseDate', 10), '') as apple_release_date,
+        -- for the year and label on the site (gold_release_details): the album's
+        -- name ("Untitled - EP") and copyright line ("℗ 2026 FELT"). Songs have no
+        -- copyright line in Apple's answer, only the album they're on.
+        nullif(c ->> '$.collectionName', '') as apple_album_title,
+        nullif(c ->> '$.copyright', '') as apple_copyright
     from latest l,
         unnest(json_extract(l.response, '$.results[*]')) as t(c)
     where c ->> '$.wrapperType' in ('collection', 'track')
@@ -112,6 +117,8 @@ select
     b.apple_title,
     b.apple_artist,
     b.apple_release_date,
+    b.apple_album_title,
+    b.apple_copyright,
     b.url,
     round(b.title_similarity, 3) as title_similarity,
     round(b.artist_similarity, 3) as artist_similarity,

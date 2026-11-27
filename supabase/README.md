@@ -46,8 +46,13 @@ It needs two secrets, set under Edge Functions → Secrets (never in the website
 
 ## Notes, collages and signing in
 
-Notes and collages are written from the website, so they live in tables of
-their own (`user_data.sql`): `notes`, `collages` and `collage_items`. A thing
+Notes, collages and gardens are written from the website, so they live in
+tables of their own (`user_data.sql`): `notes`, `collages`, `collage_items`,
+`gardens` (one per person), `rotation` (what each person has pinned for the
+top bar) and `library_changes` (what each person queued, collected or took out
+with the icons on a release page: the library they see is the pipeline's
+library with these changes on top); gardens, rotation and library changes are
+only readable by their owner. A thing
 can have several notes, and an item in a collage can have notes of its own
 (about = `collage:<collage id>:<mili ID>`). Covers people upload for their
 collages go in a public Storage bucket, `covers`, in a folder per person; the
@@ -57,15 +62,19 @@ security decides who sees what. Anyone can read public notes and collages.
 Only the person who made something can change it, and only they see it when
 it's private. Postgres checks this on every request, whatever the website asks.
 
-Signing in uses Supabase Auth with an email and a password. Accounts are made by
-hand, so no one can sign themselves up:
+Signing in uses Supabase Auth. Two ways in:
 
-1. Authentication → Sign In / Providers: keep **Email** on, and turn off
-   **Allow new users to sign up**.
-2. Authentication → Users → **Add user** → Create new user: an email and a
-   password, with **Auto Confirm User** ticked. Make one for yourself, and one
-   for anyone who should test it.
-3. Sign in on the website: the menu → sign in.
+- **Email and password**, for accounts you make by hand: Authentication →
+  Users → **Add user** → Create new user, with **Auto Confirm User** ticked.
+  The website has no sign-up form.
+- **"try the beta"**, for friends: Supabase's anonymous sign-in makes a guest
+  account for that browser, so each friend gets a space of their own. It needs
+  two switches under Authentication → Sign In / Providers: **Allow new users to
+  sign up** on (Supabase counts a guest as a new user) and **Allow anonymous
+  sign-ins** on. Keep **Confirm email** on. Turning anonymous sign-ins off
+  closes the beta again; "try the beta" then says so.
+
+When no one is signed in, the website's front page is the sign-in page.
 
 The tables don't point to `objects` with a foreign key on purpose: the loader
 empties `objects` with "cascade", which would empty them too. A mili ID stays

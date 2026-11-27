@@ -56,7 +56,7 @@ export function notesBlock(about, { compact = false, preloaded = null } = {}) {
   }
   function drawToggle() {
     if (compact) return;
-    toggle.replaceChildren(mi("note"), notes.length ? h("span", { class: "note-count" }, `(${notes.length})`) : null);
+    toggle.replaceChildren(...[mi("note"), notes.length ? h("span", { class: "note-count" }, `(${notes.length})`) : null].filter(Boolean));
     toggle.classList.toggle("has", notes.length > 0);
   }
   toggle?.addEventListener("click", () => {

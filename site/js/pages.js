@@ -1,12 +1,12 @@
 // mili: the pages. Each function returns what goes into <main>.
 
-import { data, getObject, searchLive, searchOutside, findEverywhere, sameArtist, water, inRotation, normalize, mixDate, mixLength } from "./data.js";
+import { data, getObject, searchLive, searchOutside, findEverywhere, sameArtist, water, normalize, mixDate, mixLength } from "./data.js";
 import { h, mi, cover, byline, list, row, dotKey, availabilityText, availabilityDot } from "./ui.js";
 import { readTheme, saveTheme, DEFAULT_ACCENT } from "./theme.js";
 import { openPalette } from "./palette.js";
 import { notesBlock } from "./notes.js";
 import { collageButton, collageLine, collagePage, profilePage, collageChips, newCollageChip, bringInFileCollages } from "./collages.js";
-import { canSave, me, signIn, signOut, userData, collagesWith } from "./account.js";
+import { canSave, me, signIn, signInAsGuest, signOut, userData, collagesWith, onRotation, toggleRotation, setLibraryStatus } from "./account.js";
 
 // #/collage/<id> and #/profile (the pages themselves are in collages.js)
 export const collage = collagePage;
@@ -99,7 +99,7 @@ export function search(query) {
       shown.length ? `${shown.length} release${shown.length === 1 ? "" : "s"}` : null,
       mixes.length ? `${mixes.length} mix${mixes.length === 1 ? "" : "es"}` : null,
     ].filter(Boolean).join(" and ");
-    box.replaceChildren(
+    box.replaceChildren(...[      // (empty spots left out, or they'd show as "null")
       h("h2", {}, "Outside mili"),
       h("p", { class: "count" },
         found ? `${found} found online` : `Nothing found online for “${q}”.`,
@@ -107,7 +107,7 @@ export function search(query) {
       shown.length ? h("div", { class: "list" }, shown.map((s) => s.row)) : null,
       mixes.length ? h("h3", { class: "outside-mixes" }, "Mixes", h("span", { class: "n" }, "on Mixcloud, where NTS keeps its shows too")) : null,
       mixes.length ? h("div", { class: "list" }, mixes) : null,
-    );
+    ].filter(Boolean));
     // Odesli allows 10 lookups a minute, so only the top 3 fill in by
     // themselves, one after another; the rest keep the links the search found
     for (const item of shown.filter((s) => s.start).slice(0, 3)) {
@@ -129,12 +129,26 @@ export function search(query) {
 export function home() {
   const recent = data.library.items.slice(0, 8).map((i) => data.byId.get(i.id)).filter(Boolean);
   return h("section", { class: "page home" },
+    rotationSection(),
     gettingStarted(),
     recent.length ? h("h2", {}, "Recently added to the library") : null,
     recent.length ? list(recent) : null,
     recent.length ? h("p", { class: "count" }, h("a", { href: "#/library" }, `the whole library (${data.library.items.length}) →`)) : null,
     h("h2", { id: "labels" }, "Labels"),
     labelGrid());
+}
+
+// ▸ rotation ↻ 2: what you have on rotation, folded or open (remembered)
+function rotationSection() {
+  const ids = canSave() && me() ? userData.rotation.filter((id) => data.byId.has(id)) : [];
+  if (!ids.length) return null;
+  return h("details", {
+    class: "getting-started rotation-section",
+    open: readPrefs().rotationOpen === true,
+    ontoggle: (event) => savePrefs({ rotationOpen: event.target.open }),
+  },
+  h("summary", {}, "rotation", mi("rotation", "inline"), h("span", { class: "n" }, ids.length)),
+  list(ids.map((id) => data.byId.get(id))));
 }
 
 // ▾ getting started: short, with the top bar's icons. Folding it shut is
@@ -157,9 +171,9 @@ function gettingStarted() {
     h("li", {}, first ? go(`#/release/${first.id}`, "open a release") : "open a release",
       " to listen wherever you like, or ", h("code", {}, "[buy]"), " it."),
     h("li", {}, "the library is a ", go("#/library?show=queue", "queue"), " ", icon("queue"), " and a ",
-      go("#/library?show=collection", "collection"), " ", icon("collect"), ". Gather anything into collages ", icon("collage"), ", and keep notes ", icon("note"), " on what you find."),
-    h("li", {}, "listening from mili puts a release ", go("#/guide", "on rotation"), " ", icon("rotation"),
-      " for 30 days, and waters its plant in the garden."),
+      go("#/library?show=collection", "collection"), " ", icon("collect"), ": add to them with the same icons on a release's page. Gather anything into collages ", icon("collage"), ", and keep notes ", icon("note"), " on what you find."),
+    h("li", {}, "put a release ", go("#/guide", "on rotation"), " with ", icon("rotation"),
+      " on its page: its cover sits in the top bar, close at hand."),
     h("li", {}, "walk the ", go("#/atlas", "atlas"), " ", icon("network"),
       ": one release in the middle, and what it shares with the rest of the library around it."),
     h("li", {}, "tend the ", go("#/garden", "garden"), " ", icon("garden"),
@@ -181,10 +195,9 @@ export async function release(id) {
   const obj = await getObject(id);
   if (!obj) return notFound("This release's page couldn't be loaded.");
 
-  const item = data.inLibrary.get(id);
-
-  // the row of listen links, in the platforms' order
-  const listen = h("div", { class: "links" });
+  // the row of listen links, in the platforms' order: the first three, [buy],
+  // and "…", which shows the rest and [refresh links]
+  const listen = h("div", { class: "links folded" });
   const hiddenServices = new Set(readPrefs().hiddenServices || []);
   for (const link of obj.listen.filter((l) => !hiddenServices.has(l.platform))) {
     listen.append(
@@ -218,20 +231,80 @@ export async function release(id) {
     // (a click anywhere else closes the menu: see app.js)
     listen.append(h("span", { class: "buy" }, toggle, menu));
   }
-  if (obj.kind !== "mix") listen.append(refreshLinks(obj, listen));   // Odesli only knows releases
+  if (obj.kind !== "mix") {
+    const refresh = refreshLinks(obj, listen);    // Odesli only knows releases
+    refresh.classList.add("extra");
+    listen.append(refresh);
+  }
+  const moreLinks = h("button", {
+    class: "more-links",
+    title: "more platforms",
+    "aria-expanded": "false",
+    onclick: (event) => {
+      event.stopPropagation();
+      const open = listen.classList.toggle("folded") === false;
+      moreLinks.setAttribute("aria-expanded", String(open));
+      moreLinks.title = open ? "fewer platforms" : "more platforms";
+    },
+  }, "…");
+  listen.append(moreLinks);
+  foldLinks(listen);
 
-  // the icons: queue and collection (from the library), rotation (opened from
-  // mili in the last 30 days, in this browser), and the atlas
-  const rotating = inRotation(id);
+  // the icons: queue and collection (your library: click to put it there or
+  // take it out), rotation (your pin: its cover sits in the top bar), the
+  // atlas, and collages. Signed out, queue, collect and rotation lead to sign in.
+  const toSignIn = () => { location.hash = `#/sign-in?back=${encodeURIComponent(location.hash)}`; };
+  const libraryLine = h("p", { class: "meta" });
+  const libraryButton = (status, icon) => {
+    const button = h("button", { class: "act" }, mi(icon));
+    button.addEventListener("click", async () => {
+      if (!me()) { toSignIn(); return; }
+      queue.disabled = collect.disabled = true;
+      try { await setLibraryStatus(id, status); } catch { /* stays as it was */ }
+      queue.disabled = collect.disabled = false;
+      drawLibrary();
+    });
+    return button;
+  };
+  const queue = libraryButton("queue", "queue");
+  const collect = libraryButton("collection", "collect");
+  const drawLibrary = () => {
+    const item = data.inLibrary.get(id);
+    const status = item?.status;
+    queue.classList.toggle("on", status === "queue");
+    queue.title = status === "queue" ? "in the queue: click to take it out" : "put it in the queue";
+    collect.classList.toggle("on", status === "collection");
+    collect.title = status === "collection" ? "in the collection: click to take it out" : "add it to the collection";
+    // "added 2026-11-27 · collection" (without the live database, the library
+    // file's collages are named here too; with it, they're in collageLine)
+    libraryLine.hidden = !item;
+    libraryLine.replaceChildren(...(item ? [
+      `added ${item.added_on || "(no date)"} · ${item.status}`,
+      !canSave() && item.collages.length ? ` · ${item.collages.join(", ")}` : "",
+    ] : []));
+  };
+  drawLibrary();
+
+  const rotation = h("button", { class: "act" }, mi("rotation"));
+  const drawRotation = () => {
+    const on = onRotation(id);
+    rotation.classList.toggle("on", on);
+    rotation.title = on ? "on rotation: click to take it off" : "put it on rotation";
+  };
+  drawRotation();
+  rotation.addEventListener("click", async () => {
+    if (!me()) { toSignIn(); return; }
+    rotation.disabled = true;
+    try { await toggleRotation(id); } catch { /* stays as it was */ }
+    rotation.disabled = false;
+    drawRotation();
+  });
   const actions = h(
     "div",
     { class: "actions" },
-    h("span", { class: `act ${item && item.status === "queue" ? "on" : ""}`,
-      title: item && item.status === "queue" ? "in the queue" : "not in the queue" }, mi("queue")),
-    h("span", { class: `act ${item && item.status === "collection" ? "on" : ""}`,
-      title: item && item.status === "collection" ? "in the collection" : "not in the collection" }, mi("collect")),
-    h("span", { class: `act ${rotating ? "on" : ""}`,
-      title: rotating ? "in rotation: opened from mili in the last 30 days" : "not in rotation" }, mi("rotation")),
+    queue,
+    collect,
+    rotation,
     h("a", { class: "act", href: `#/atlas/${id}`, title: "see it in the atlas" }, mi("network")),
     collageButton(id),
   );
@@ -242,14 +315,6 @@ export async function release(id) {
     ? h("p", { class: "versions" },
       h("span", { class: "muted" }, `${obj.versions_total} versions · `),
       others.map((v, i) => [i ? h("span", { class: "muted" }, " · ") : null, v.title]))
-    : null;
-
-  // with the live database, collages are in collageLine; without it, the
-  // library file's collages are named here
-  const libraryLine = item
-    ? h("p", { class: "meta" },
-      `added ${item.added_on || "(no date)"} · ${item.status}`,
-      !canSave() && item.collages.length ? ` · ${item.collages.join(", ")}` : "")
     : null;
 
   const more = sameArtist(light).sort(byYearNewest);
@@ -278,14 +343,19 @@ export async function release(id) {
     versions,
     libraryLine,
     collageLine(id),
-    h("p", { class: "meta" },
-      availabilityDot(obj), " ", availabilityText[obj.availability] || "",
-      obj.genres.length ? ` · ${obj.genres.join(", ")}` : "",
-      " · mili ", h("code", {}, obj.id),
-      " · ", h("a", { href: `#/garden?focus=${id}` }, "find it in the garden →")),
     more.length ? h("h2", {}, `More by ${obj.artist}`) : null,
     more.length ? list(more) : null,
   );
+}
+
+// Only the first three listen links show until "…" is clicked; the rest get
+// the class "extra" (hidden while the row is "folded"). Run again when
+// [refresh links] adds some. "…" only shows when there's something behind it.
+const SHOWN_LINKS = 3;
+function foldLinks(listen) {
+  [...listen.querySelectorAll(":scope > .link")].forEach((a, i) => a.classList.toggle("extra", i >= SHOWN_LINKS));
+  const more = listen.querySelector(":scope > .more-links");
+  if (more) more.hidden = !listen.querySelector(":scope > .extra");
 }
 
 // [refresh links] on a release page: asks Odesli, through the function at
@@ -328,6 +398,7 @@ function refreshLinks(obj, listen) {
         }, l.name, " ↗", h("span", { class: "version" }, "new"));
         listen.insertBefore(link, buy || button);
       }
+      foldLinks(listen);
       button.textContent = fresh.length ? `[${fresh.length} new]` : "[nothing new]";
       button.title = "refreshed just now";
     },
@@ -335,10 +406,6 @@ function refreshLinks(obj, listen) {
   return button;
 }
 
-// "contains 8": the songs on a release, each with the cover, title and artist,
-// and the length on the right. Releases with more than one disc get a small
-// "disc 2" between the discs. Releases without a track list of their own, but
-// with a Bandcamp ID, show Bandcamp's official embedded player instead.
 // Under a mix's byline: "12 Mar 2025 · 1 h 59 min · on NTS Radio"
 function mixLine(obj) {
   const mix = obj.mix || {};
@@ -384,6 +451,10 @@ function mixPlayer(obj) {
     player);
 }
 
+// "contains 8": the songs on a release, each with the cover, title and artist,
+// and the length on the right. Releases with more than one disc get a small
+// "disc 2" between the discs. Releases without a track list of their own, but
+// with a Bandcamp ID, have Bandcamp's slim player instead ("listen here").
 function contains(obj) {
   const tracks = obj.tracks || [];
   if (tracks.length) {
@@ -403,22 +474,21 @@ function contains(obj) {
         ])));
   }
   if (obj.bandcamp_player) {
-    // Bandcamp's player, in the site's colours; an album gets its track list
+    // Bandcamp's own player, the slim one: a single line in the site's colours
+    // (the cover is already at the top of the page)
     const theme = readTheme();
-    const isAlbum = obj.bandcamp_player.startsWith("album=");
     const src = "https://bandcamp.com/EmbeddedPlayer/" + [
       obj.bandcamp_player,
-      "size=large",
+      "size=small",
       `bgcol=${theme.dark ? "0b0b0b" : "ffffff"}`,
       `linkcol=${theme.accent.replace("#", "")}`,
       "artwork=none",
-      `tracklist=${isAlbum}`,
       "transparent=true",
     ].join("/") + "/";
     return h("div", { class: "contains" },
-      h("h3", {}, "contains"),
+      h("h3", {}, "listen here"),
       h("iframe", {
-        class: `bandcamp-player ${isAlbum ? "player-album" : "player-track"}`,
+        class: "bandcamp-player",
         src,
         title: `${obj.title} on Bandcamp`,
         loading: "lazy",
@@ -533,7 +603,7 @@ export function library(params) {
     items.length
       ? h("div", { class: "list" },
         items.map((i) => row(data.byId.get(i.id), h("span", { class: "added" }, i.added_on || ""))))
-      : h("p", { class: "empty" }, "The library is empty. Add releases to seeds/library.csv and run the export again."),
+      : h("p", { class: "empty" }, "Nothing here yet. The queue and collect icons on a release's page add it to the library."),
   );
 }
 
@@ -724,24 +794,6 @@ export function settings() {
   const items = data.library.items.filter((i) => data.byId.has(i.id));
   const inCollection = items.filter((i) => i.status === "collection").length;
 
-  // garden: save or start over
-  let garden = { plants: {}, marks: [] };
-  try { garden = JSON.parse(localStorage.getItem("mili.garden") || "null") || garden; } catch { /* none */ }
-  const planted = Object.keys(garden.plants || {}).length;
-  const startOver = h("button", {
-    class: "bracket",
-    onclick: () => {
-      if (startOver.dataset.sure) {
-        try { localStorage.removeItem("mili.garden"); } catch { /* storage off */ }
-        startOver.textContent = "[the garden starts over]";
-        startOver.disabled = true;
-      } else {
-        startOver.dataset.sure = "yes";
-        startOver.textContent = "[really? click again to start over]";
-      }
-    },
-  }, "[start over]");
-
   return h(
     "section",
     { class: "page settings" },
@@ -769,11 +821,11 @@ export function settings() {
       bringIn ? h("p", { class: "help" }, "Collages are saved in your account now. The ones in the library file can be brought in once; after that, make and change them on the site.") : null,
       bringIn ? h("p", { class: "exports" }, bringIn) : null),
     section("garden", null, false,
-      h("p", { class: "help" }, `${planted} planted · ${(garden.marks || []).length} ground marks, kept in this browser.`),
-      h("p", { class: "help" }, "Save downloads the garden as garden.json; with that file in site/data/ the published site shows it."),
-      h("p", { class: "exports" },
-        h("button", { class: "bracket", onclick: () => download("garden.json", JSON.stringify({ saved_at: new Date().toISOString(), ...garden }, null, 1), "application/json") }, "[save garden.json]"),
-        startOver)),
+      h("p", { class: "help" }, me()
+        ? "Your garden is saved to your account, so it's the same on every device."
+        : "Not signed in, the garden is kept in this browser."),
+      h("p", { class: "help" }, "“save” on the garden page downloads it as garden.json (with that file in site/data/, the published site shows it to visitors), and “start over” clears it; undo brings it back."),
+      h("p", { class: "exports" }, h("a", { class: "bracket", href: "#/garden" }, "[open the garden]"))),
     section("data", "where it comes from", false,
       h("p", { class: "help" },
         `${data.index.length.toLocaleString("en")} objects · data from ${data.meta.exported_at?.slice(0, 10) || "?"}`),
@@ -793,7 +845,9 @@ function accountSection(section) {
     const out = h("button", { class: "bracket" }, "[sign out]");
     out.addEventListener("click", async () => { out.disabled = true; await signOut(); });
     return section("account", "signed in", false,
-      h("p", { class: "help" }, `Signed in as ${user.email}. Notes and collages you make are saved to this account.`),
+      h("p", { class: "help" }, user.guest
+        ? "Signed in as a guest, trying the beta. Your notes and collages are saved to a guest account that belongs to this browser: logging out ends it."
+        : `Signed in as ${user.email}. Notes and collages you make are saved to this account.`),
       h("p", { class: "exports" }, out));
   }
   return section("account", "not signed in", true,
@@ -833,8 +887,10 @@ function exportLibrary(format) {
 // The guide: how mili works, in folding sections
 // ---------------------------------------------------------------------------
 
-// #/sign-in: the word "mili" in dots, email and password, and "what is mili".
-// After signing in, it goes back to the page you came from (?back=…).
+// #/sign-in: the word "mili" in dots, email and password, "try the beta"
+// (a guest account, for friends trying mili), and "what is mili". It's also
+// the front page when no one is signed in. After signing in, it goes back to
+// the page you came from (?back=…).
 export function signInPage(params) {
   const back = params.get("back") || "#/";
   const page = h("section", { class: "page sign-in-page" },
@@ -850,7 +906,7 @@ export function signInPage(params) {
     const out = h("button", { class: "note-button" }, "sign out");
     out.addEventListener("click", async () => { out.disabled = true; await signOut(); });
     page.append(
-      h("p", { class: "help" }, `Signed in as ${user.email}.`),
+      h("p", { class: "help" }, user.guest ? "Signed in as a guest, trying the beta." : `Signed in as ${user.email}.`),
       h("div", { class: "note-row" }, out, h("a", { class: "note-button", href: back }, "go back")),
       links);
     return page;
@@ -860,13 +916,25 @@ export function signInPage(params) {
   const password = h("input", { class: "field", id: "sign-in-password", type: "password", autocomplete: "current-password" });
   const go = h("button", { class: "note-button", type: "submit", disabled: true }, "sign in");
   const problem = h("p", { class: "note-meta sign-in-problem" });
+  const beta = h("button", { class: "note-button beta", type: "button" }, "try the beta");
+  beta.addEventListener("click", async () => {
+    beta.disabled = true;
+    problem.textContent = "making a guest account…";
+    try {
+      await signInAsGuest();
+      location.hash = back;
+    } catch (error) {
+      problem.textContent = error.message;
+      beta.disabled = false;
+    }
+  });
   const ready = () => { go.disabled = !(email.value.trim() && password.value); };
   email.addEventListener("input", ready);
   password.addEventListener("input", ready);
   const form = h("form", { class: "sign-in" },
     h("label", { for: "sign-in-email" }, "email"), email,
     h("label", { for: "sign-in-password" }, "password"), password,
-    go, problem);
+    go, beta, problem);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (go.disabled) return;
@@ -881,7 +949,6 @@ export function signInPage(params) {
     }
   });
   page.append(form, links);
-  setTimeout(() => email.focus(), 0);
   return page;
 }
 
@@ -945,12 +1012,13 @@ export function guide() {
       "“search everything” opens a page of results that also looks outside mili: releases on MusicBrainz, Apple Music, Deezer and Discogs, and mixes on Mixcloud, where NTS keeps its shows too. The top releases there fill in every platform they can be heard on.",
       "Paste a link from Bandcamp, Spotify, Apple Music, Deezer, Tidal, Discogs, MusicBrainz, YouTube, SoundCloud, Mixcloud or NTS to go straight to it. If mili doesn't have it, the box shows what it is and where else it can be heard."),
     part("release pages",
-      "The links under the title are where the release can be heard, one per platform. A small note like “deluxe edition” means the link goes to another version of the same release.",
-      ["[buy] opens Bandcamp and Discogs. [refresh links] asks for the release on platforms mili doesn't know yet; new ones are marked “new”."],
-      "“contains” lists the songs, from MusicBrainz or Apple Music. Releases that only exist on Bandcamp show Bandcamp's own player instead.",
-      "The dot at the bottom tells where it can be heard: on Bandcamp and streaming, streaming only, Bandcamp only, or nowhere mili has found yet."),
+      "Under the title: the artist, the year and the label, from MusicBrainz, or from Apple Music for releases MusicBrainz doesn't know.",
+      "Then where the release can be heard, one link per platform: the first three, and “…” for the rest. A small note like “deluxe edition” means the link goes to another version of the same release.",
+      ["[buy] opens Bandcamp and Discogs. [refresh links], behind the “…”, asks for the release on platforms mili doesn't know yet; new ones are marked “new”."],
+      "“contains” lists the songs, from MusicBrainz or Apple Music. Releases without a list of songs have Bandcamp's own small player instead."),
     part("queue and collection",
       ["The library has two parts: the queue ", mi("queue", "inline"), ", for what you want to hear, and the collection ", mi("collect", "inline"), ", for what you have. This library is built from a Bandcamp collection: purchases are in the collection, the wishlist is the queue."],
+      "On a release or mix page, the same two icons put it in the queue or the collection, or take it out again. That's saved to your account: everyone starts from this library, and what each person changes stays their own.",
       "The library page switches between them, and collages group releases across both."),
     part("mixes",
       "A DJ mix or radio show from SoundCloud, Mixcloud or NTS is kept like a release, marked “mix”. Its page has the date, the length and the platform's own player, and it sits on the DJ's artist page under their releases.",
@@ -960,7 +1028,8 @@ export function guide() {
       ["The collage icon ", mi("collage", "inline"), " on a page adds it to one of your collages, or starts a new one. A collage is a list of releases and mixes, like a channel on Are.na, with a page and a note of its own. Collages start public; [edit] on a collage renames it, makes it private, or deletes it."],
       "Writing needs a sign-in (the menu → sign in). Your profile, in the same menu, lists your collages and every note you've written. Without signing in, you can still read the public notes and collages."),
     part("rotation",
-      ["Opening a listen link from mili “waters” the release. Anything watered in the last 30 days is on rotation ", mi("rotation", "inline"), ", lit on its page. The counts are kept in this browser."]),
+      ["The rotation icon ", mi("rotation", "inline"), " on a release or mix page puts it on rotation: its cover sits in the top bar, and in “rotation” at the top of the front page, until you click the icon again to take it off. It's saved to your account."],
+      "Opening a listen link from mili also “waters” the release, which makes its plant grow in the garden."),
     part("labels",
       "The catalogue starts from 20 labels: every release MusicBrainz knows on each, plus what's on the labels' own Bandcamp pages. A label's page shows how much of it can be heard where."),
     part("atlas",
@@ -968,7 +1037,7 @@ export function guide() {
       "Keys: ← → within a ring, ↑ ↓ between rings, enter to recentre, ⌫ to walk back."),
     part("garden",
       ["Plant the library in the garden ", mi("garden", "inline"), ": drag releases up from the tray onto the ground, and shape the ground with ridges, pools, paths, rings, marks, words and drawn outlines."],
-      "A plant's family comes from the release's genre: ambient is a fern, techno a crystal, jazz a climber. It grows each time you listen to the release from mili, blooms while it's on rotation, and fades when it's left alone for half a year. Ridges are stone, pools moss, outlines loam, rings clay, paths sand; on the ground its species likes, a plant grows a little bigger.",
+      "A plant's family comes from the release's genre: ambient is a fern, techno a crystal, jazz a climber. It grows each time you listen to the release from mili, blooms when you've listened in the last 30 days, and fades when it's left alone for half a year. Ridges are stone, pools moss, outlines loam, rings clay, paths sand; on the ground its species likes, a plant grows a little bigger.",
       "Click a plant to change its species, colours or variation, to water it, or to move or uproot it. “save” downloads the garden as a file; settings has the same, and a way to start over."),
     part("keyboard",
       ["/ or ⌘K: search · ↑ ↓ and enter in the search box · esc closes · ⌘↵ saves a note · in the atlas ← → ↑ ↓ enter ⌫ · in the garden ⌘Z undoes."]),

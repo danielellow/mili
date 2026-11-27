@@ -2,6 +2,7 @@
 //
 // The part of the address after "#" says which page to show:
 //   #/                     home: getting started, recently added, the labels
+//                          (the sign-in page, when no one is signed in)
 //   #/search?q=wind        everything that matches, in mili and outside it
 //   #/release/<mili ID>    a release or mix
 //   #/artist/<artist ID>   everything by one artist
@@ -19,13 +20,13 @@
 // Because it's all after "#", the site is just files: no server is needed.
 
 import { data, loadAll } from "./data.js";
-import { h } from "./ui.js";
+import { h, cover } from "./ui.js";
 import { applyTheme } from "./theme.js";
 import * as pages from "./pages.js";
 import { atlas, walkBack } from "./atlas.js";
-import { garden } from "./garden.js";
+import { garden, flushGarden } from "./garden.js";
 import { openPalette, closePalette } from "./palette.js";
-import { loadCollages, onChange, canSave, me, signOut } from "./account.js";
+import { loadCollages, onChange, canSave, me, signOut, userData } from "./account.js";
 
 applyTheme();     // before anything is drawn, so there's no flash of the wrong theme
 
@@ -44,7 +45,9 @@ function parseAddress() {
 async function show() {
   const { parts, params } = parseAddress();
   const [page, arg] = parts;
-  const name = page || "home";
+  // not signed in: the front page is the sign-in page
+  const landing = !page && !params.get("q") && canSave() && !me();
+  const name = landing ? "sign-in" : page || "home";
   document.body.dataset.page = name;
 
   // light up the icon for this page
@@ -56,7 +59,8 @@ async function show() {
   let content;
   try {
     if (!page && params.get("q")) { location.replace(`#/search?q=${encodeURIComponent(params.get("q"))}`); return; }
-    if (!page) content = pages.home();
+    if (landing) content = pages.signInPage(new URLSearchParams());
+    else if (!page) content = pages.home();
     else if (page === "search") content = pages.search(params.get("q") || "");
     else if (page === "guide") content = pages.guide();
     else if (page === "release") content = await pages.release(arg);
@@ -144,7 +148,7 @@ document.getElementById("search-button").addEventListener("click", (event) => {
   openPalette();
 });
 
-window.addEventListener("hashchange", () => { closePalette(); show(); });
+window.addEventListener("hashchange", () => { flushGarden(); closePalette(); show(); });
 
 async function start() {
   view.replaceChildren(h("p", { class: "loading" }, "loading the catalogue…"));
@@ -160,9 +164,25 @@ async function start() {
   // them, but don't hold the page up if Supabase is slow
   await Promise.race([loadCollages(), new Promise((resolve) => setTimeout(resolve, 2500))]);
   show();
+  drawRotationBar();
 }
 
-// signing in or out changes what the page shows: draw it again
-onChange((kind) => { if (kind === "session") show(); });
+// The top bar's covers: what you have on rotation, newest first
+function drawRotationBar() {
+  const bar = document.getElementById("rotation-bar");
+  const ids = canSave() && me() ? userData.rotation.filter((id) => data.byId.has(id)).slice(0, 8) : [];
+  bar.hidden = !ids.length;
+  bar.replaceChildren(...ids.map((id) => {
+    const obj = data.byId.get(id);
+    return h("a", { class: "rot", href: `#/release/${id}`, title: `${obj.title}${obj.artist ? ` · ${obj.artist}` : ""} (on rotation)` }, cover(obj, "small"));
+  }));
+}
+
+// signing in or out changes what the page shows: draw it again;
+// rotation changes only the top bar's covers
+onChange((kind) => {
+  if (kind === "session") show();
+  if (kind === "session" || kind === "rotation") drawRotationBar();
+});
 
 start();

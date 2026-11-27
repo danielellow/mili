@@ -365,6 +365,23 @@ models:
                 to: ref('gold_objects')
                 field: object_id
 
+  - name: gold_release_details
+    description: The year, label and type of release from Apple Music (already-saved album lookups and name-search matches), for releases MusicBrainz doesn't know. The label is read from Apple's copyright line ("℗ 2026 FELT" -> FELT), and left empty when that only names the artist.
+    columns:
+      - name: object_id
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_objects')
+                field: object_id
+      - name: type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['album', 'ep', 'single']
+
   - name: gold_site_objects
     description: One row per object with everything the website shows (labels, artist IDs, genres, availability, listen links, buy menu, versions). export/export_site_data.py writes it as JSON.
     columns:

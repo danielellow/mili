@@ -18,9 +18,11 @@
 --   buy            the buy menu (Bandcamp, Discogs)
 --   versions       the versions page section ("2 versions · Wind (Deluxe Version)")
 --
--- Only open data goes to the website: the release facts come from MusicBrainz
--- (or the label's own Bandcamp page, or the mix you added), plus links.
--- Titles and dates the platforms gave us (gold_claims) stay in the analysis.
+-- The release facts come from MusicBrainz (or the label's own Bandcamp page,
+-- or the mix you added), plus links. For releases MusicBrainz doesn't know,
+-- the year, label and type come from Apple Music (gold_release_details), and
+-- only where nothing else says them. The other titles and dates the platforms
+-- gave us (gold_claims) stay in the analysis.
 
 with labels as (
 
@@ -99,9 +101,9 @@ select
     o.title,
     o.artist_credit as artist,
     coalesce(a.artist_ids, []::varchar[]) as artist_ids,
-    o.work_type as type,                            -- album, ep, single ... or empty
-    o.first_release_year as year,
-    coalesce(lb.labels, []::varchar[]) as labels,
+    coalesce(o.work_type, d.type) as type,          -- album, ep, single ... or empty
+    coalesce(o.first_release_year, d.year) as year,
+    coalesce(lb.labels, case when d.label is not null then [d.label] end, []::varchar[]) as labels,
     o.cover_url as cover,
     coalesce(string_split(o.top_genres, ', '), []::varchar[]) as genres,
     li.bandcamp_page,
@@ -120,6 +122,7 @@ select
     mx.mix
 from {{ ref('gold_objects') }} o
 left join labels lb on lb.object_id = o.object_id
+left join {{ ref('gold_release_details') }} d on d.object_id = o.object_id
 left join {{ ref('gold_object_artists') }} a on a.object_id = o.object_id
 left join mixes mx on mx.born_from = o.born_from
 left join listen li on li.object_id = o.object_id

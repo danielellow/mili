@@ -29,12 +29,14 @@
 :root[data-theme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
+/* the base size: almost every size on the site is a multiple of it (rem) */
+html { font-size: 14px; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans);
              -webkit-font-smoothing: antialiased; }
 a { color: inherit; text-decoration: none; }
 a:hover { color: var(--text); }
 code { font-family: var(--mono); font-size: 0.95em; color: var(--dim); }
-h1 { font-weight: 500; font-size: 2.1rem; margin: 0 0 0.5rem; letter-spacing: -0.01em; }
+h1 { font-weight: 500; font-size: 1.75rem; margin: 0 0 0.5rem; letter-spacing: -0.01em; }
 h2 { font-family: var(--mono); font-weight: 400; font-size: 0.78rem; letter-spacing: 0.08em;
      text-transform: uppercase; color: var(--dim); margin: 3.4rem 0 1rem; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
@@ -99,7 +101,7 @@ main { min-height: 70vh; }
 
 /* ---- release page ----------------------------------------------------- */
 
-.release { display: grid; grid-template-columns: 15rem 1fr; gap: 2.6rem; align-items: start; }
+.release { display: grid; grid-template-columns: 10.5rem 1fr; gap: 2rem; align-items: start; }
 .release-main { min-width: 0; }
 .release h1 { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
 
@@ -110,7 +112,7 @@ main { min-height: 70vh; }
 }
 .row .badge { font-size: 0.65rem; margin-left: 0.5rem; }
 
-.byline { font-size: 1.2rem; color: var(--dim); margin-bottom: 1.3rem; }
+.byline { font-size: 1.05rem; color: var(--dim); margin-bottom: 1.1rem; }
 .byline .label { color: var(--text); }
 .byline a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .row .byline { font-size: 0.9rem; margin: 0.2rem 0 0; }
@@ -118,6 +120,10 @@ main { min-height: 70vh; }
 .links { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem 1.7rem;
          font-family: var(--mono); font-size: 1rem; line-height: 1.75; }
 .link:hover { color: var(--accent); }
+/* the first three links, then "…" for the rest (pages.js: foldLinks) */
+.links.folded > .extra { display: none; }
+.more-links { color: var(--dim); font-family: var(--mono); }
+.more-links:hover, .links:not(.folded) > .more-links { color: var(--text); }
 .version { color: var(--faint); font-size: 0.78em; margin-left: 0.4em; }
 .bracket { color: var(--dim); }
 .bracket:hover { color: var(--text); }
@@ -153,20 +159,19 @@ a.act:hover { color: var(--text); }
 .track .length { font-family: var(--mono); font-size: 0.78rem; color: var(--faint); }
 .disc { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
         color: var(--dim); margin: 1.4rem 0 0.4rem 0.4rem; }
-.bandcamp-player { display: block; width: 100%; border: 0; }
+/* Bandcamp's slim player: one line, 42 px high (its own fixed height) */
+.bandcamp-player { display: block; width: 100%; max-width: 36rem; height: 42px; border: 0; }
 .mix-player { display: block; width: 100%; border: 0; }
 .mix-player.mixcloud { height: 120px; }
 .mix-player.soundcloud { height: 166px; }
 .outside-mixes { display: flex; align-items: baseline; gap: 0.8rem; font-size: 1.1rem; font-weight: 600; margin: 2rem 0 0.6rem; }
 .outside-mixes .n { font-family: var(--mono); font-weight: 400; font-size: 0.8rem; color: var(--faint); }
 .mix-line { font-family: var(--mono); font-size: 0.85rem; color: var(--dim); margin: 0.35rem 0 0; }
-.bandcamp-player.player-album { height: 470px; }
-.bandcamp-player.player-track { height: 120px; }
 
 /* ---- covers ----------------------------------------------------------- */
 
 .cover { display: block; object-fit: cover; background: var(--panel); border: 1px solid var(--line); }
-.cover.large { width: 15rem; height: 15rem; border-radius: 4px; }
+.cover.large { width: 10.5rem; height: 10.5rem; border-radius: 4px; }
 .cover.small { width: 3rem; height: 3rem; flex: none; }
 .cover.placeholder {
   display: flex; align-items: center; justify-content: center;
@@ -431,8 +436,16 @@ a.act:hover { color: var(--text); }
 .gc-colour { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--dim); cursor: pointer; }
 .gc-colour input { width: 1.9rem; height: 1.9rem; padding: 0; border: 1px solid var(--line); background: none; cursor: pointer; }
 .gc-colour:not(.chosen) input { opacity: 0.55; }
-.gc-reset { color: var(--faint); }
+.gc-reset { color: var(--faint); font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; }
 .gc-reset:hover { color: var(--text); }
+.gc-growth .gc-reset { margin-left: 0.8rem; }
+.gc-species-buttons { display: flex; flex-direction: column; align-items: flex-end; gap: 0.4rem; }
+.g-tray.g-drop { border-top-color: var(--accent); background: var(--panel); }
+.g-tray.g-drop .g-tray-head .g-faint { color: var(--accent); }
+.g-saved { font-family: var(--mono); font-size: 0.75rem; }
+.garden .mark .hit { stroke-width: 4; }
+.garden.drawing .mark:hover .hit { fill: var(--accent); fill-opacity: 0.05; }
+.garden .mark.selected .hit, .garden .mark.selected .hit-line { stroke: var(--accent); stroke-opacity: 0.35; fill: var(--accent); fill-opacity: 0.07; }
 .gc-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .gc-actions button { border: 1px solid var(--line); padding: 0.45rem 0.8rem; color: var(--text); font: inherit; }
 .gc-actions button:hover { border-color: var(--dim); }
@@ -497,12 +510,12 @@ kbd { font-family: var(--mono); font-size: 0.85em; border: 1px solid var(--line)
 .getting-started summary::before, .guide-part summary::before, .settings details summary::before {
   content: "▸"; font-size: 0.7em; color: var(--dim); width: 0.8rem; }
 .getting-started[open] summary::before, .guide-part[open] summary::before, .settings details[open] summary::before { content: "▾"; }
-.getting-started summary { font-size: 1.55rem; font-weight: 600; }
+.getting-started summary { font-size: 1.35rem; font-weight: 600; }
 .getting-started .info { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem;
                          border: 1px solid var(--line); border-radius: 50%; font-family: var(--mono); font-size: 0.75rem;
                          font-weight: 400; color: var(--dim); position: relative; top: -0.15rem; }
 .getting-started .info:hover { color: var(--text); border-color: var(--dim); }
-.getting-started ol { margin: 1.2rem 0 0; padding-left: 2.2rem; font-size: 1.08rem; line-height: 1.95; }
+.getting-started ol { margin: 1rem 0 0; padding-left: 2rem; font-size: 1.05rem; line-height: 1.75; }
 .getting-started li { padding-left: 0.3rem; }
 .dotted { color: var(--text); text-decoration: underline dotted; text-decoration-color: var(--dim); text-underline-offset: 4px; font: inherit; padding: 0; }
 .dotted:hover { color: var(--accent); text-decoration-color: var(--accent); }
@@ -623,7 +636,7 @@ kbd { font-family: var(--mono); font-size: 0.85em; border: 1px solid var(--line)
 .collage-edit-head .byline { margin-top: 0.8rem; }
 .collage-edit-head .bracket { font-family: var(--mono); font-size: 0.95rem; }
 .collage-footer { margin-top: 2rem; }
-.collage-cover-box { position: relative; width: 15rem; }
+.collage-cover-box { position: relative; width: 10.5rem; }
 .cover-pick { position: absolute; left: 0; right: 0; bottom: 0; }
 .set-cover { display: block; width: 100%; padding: 0.4rem 0; font-family: var(--mono); font-size: 0.85rem;
              color: #111; background: rgba(235, 235, 235, 0.72); border-radius: 0 0 4px 4px; }
@@ -661,6 +674,8 @@ body[data-page="sign-in"] header.top { display: none; }
 .sign-in label { color: var(--dim); font-size: 1.05rem; margin: 0 0 0.6rem; }
 .sign-in .field { width: 100%; box-sizing: border-box; padding: 1rem 1.1rem; font-size: 1.05rem; margin: 0 0 1.6rem; }
 .sign-in .note-button { padding: 0.55rem 1rem; font-size: 1.05rem; }
+.sign-in .note-button.beta { margin-top: 0.9rem; color: var(--dim); }
+.sign-in .note-button.beta:hover:not(:disabled) { color: var(--text); }
 .sign-in-problem { margin: 0.9rem 0 0; min-height: 1em; }
 .sign-in-links { margin: 1.4rem 0 0; font-size: 0.95rem; }
 .sign-in-links a { color: var(--dim); text-decoration: underline dotted; text-underline-offset: 4px; }
@@ -672,6 +687,19 @@ a.note-button { display: inline-block; }
 .about p { margin: 0 0 1.2rem; }
 .about h2 { margin-top: 2.4rem; }
 .about a { text-decoration: underline dotted; text-underline-offset: 4px; }
+
+/* ---- rotation: covers in the top bar, and the folding list on home ---- */
+
+.rotation-bar { display: flex; align-items: center; gap: 0.5rem; margin-left: 0.2rem; }
+.rotation-bar[hidden] { display: none; }
+.rotation-bar .rot { display: inline-flex; padding: 3px; border-radius: 5px; background: var(--panel); }
+.rotation-bar .rot:hover { outline: 1px solid var(--dim); }
+.rotation-bar .cover.small { width: 24px; height: 24px; border: 0; border-radius: 3px; }
+.rotation-bar .cover.placeholder.small { font-size: 0.7rem; }
+.rotation-section { margin-bottom: 1.6rem; }
+.rotation-section summary .mi.inline { color: var(--faint); margin-left: 0.1rem; }
+.rotation-section summary .n { font-family: var(--mono); font-size: 0.85rem; font-weight: 400; color: var(--faint); }
+.rotation-section .list { margin-top: 1rem; }
 
 /* ---- small screens ---------------------------------------------------- */
 

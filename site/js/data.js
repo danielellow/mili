@@ -20,8 +20,9 @@ export const data = {
   labels: [],                     // label names, A to Z
   labelInfo: [],                  // the labels with pictures, from labels.json
   supabase: null,                 // {url, key} for live search, from supabase.json
-  library: { items: [], collages: [] },
+  library: { items: [], collages: [] },   // the library you see (applyLibraryChanges)
   inLibrary: new Map(),           // mili ID -> library item (added_on, status, collages)
+  libraryFile: [],                // the items in library.json, as exported
   platforms: [],
   meta: {},
 };
@@ -76,9 +77,36 @@ export async function loadAll() {
   }
   data.labels = [...data.byLabel.keys()].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
 
-  for (const item of library.items) {
-    if (data.byId.has(item.id)) data.inLibrary.set(item.id, item);
+  data.libraryFile = library.items.slice();
+  applyLibraryChanges();
+}
+
+// The library you see: the library file (your library, from the pipeline),
+// with what's been queued, collected or taken out on the site on top
+// (account.js keeps those changes, per account, in Supabase).
+// changes: mili ID -> { status: "queue" | "collection" | "removed", changed_at }
+// Newest first, as in the file; something added on the site counts as added that day.
+export function applyLibraryChanges(changes = new Map()) {
+  const items = new Map();
+  const inFile = new Map(data.libraryFile.map((i) => [i.id, i]));
+  // what was changed most recently first, so it leads among items added the same day
+  const changed = [...changes].sort((a, b) => (b[1].changed_at || "").localeCompare(a[1].changed_at || ""));
+  for (const [id, change] of changed) {
+    if (!data.byId.has(id) || change.status === "removed") continue;
+    const before = inFile.get(id);
+    items.set(id, {
+      collages: [], ...before, id, status: change.status,
+      added_on: before?.added_on || (change.changed_at || new Date().toISOString()).slice(0, 10),
+    });
   }
+  for (const item of data.libraryFile) {
+    if (!data.byId.has(item.id) || items.has(item.id) || changes.get(item.id)?.status === "removed") continue;
+    items.set(item.id, item);
+  }
+  data.library.items = [...items.values()]
+    .sort((a, b) => (b.added_on || "").localeCompare(a.added_on || ""));   // (a stable sort: ties keep their order)
+  data.inLibrary.clear();
+  for (const item of data.library.items) data.inLibrary.set(item.id, item);
 }
 
 // The full version of one object (listen links, buy menu, versions).

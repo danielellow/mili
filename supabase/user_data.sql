@@ -5,6 +5,9 @@
 --   collages        named lists of releases and mixes (like Are.na channels),
 --                   with a cover of their own if you choose one
 --   collage_items   what's in each collage, in order
+--   gardens         each person's garden (plants and ground marks), one per person
+--   rotation        what each person has on rotation (shown in the top bar)
+--   library_changes what each person queued, collected or took out of the library
 --   covers          (a Storage bucket) images uploaded as collage covers
 --
 -- These tables are different from the ones in schema.sql. Those are the
@@ -80,6 +83,36 @@ create table if not exists public.collage_items (
 );
 create index if not exists collage_items_object on public.collage_items (object_id);
 
+-- Each person's garden: where their plants are, what species and colours
+-- they chose, and the ground marks. Kept as one JSON document, the way the
+-- garden page uses it, and only readable by its owner.
+create table if not exists public.gardens (
+    owner       uuid primary key default auth.uid() references auth.users (id) on delete cascade,
+    garden      jsonb not null default '{"plants": {}, "marks": []}'::jsonb
+                check (octet_length(garden::text) <= 2000000),
+    updated_at  timestamptz not null default now()
+);
+
+-- On rotation: releases and mixes you've pinned, to have them close at hand.
+create table if not exists public.rotation (
+    owner       uuid not null default auth.uid() references auth.users (id) on delete cascade,
+    object_id   text not null,              -- a mili ID (no foreign key: see the top)
+    added_at    timestamptz not null default now(),
+    primary key (owner, object_id)
+);
+
+-- The library: the queue and collect icons on a release page. What each
+-- person sees is the library from the pipeline (public.library) with their
+-- own changes on top: "queue" or "collection" puts something there (or moves
+-- it), "removed" takes something out of the pipeline's library for them.
+create table if not exists public.library_changes (
+    owner       uuid not null default auth.uid() references auth.users (id) on delete cascade,
+    object_id   text not null,              -- a mili ID (no foreign key: see the top)
+    status      text not null check (status in ('queue', 'collection', 'removed')),
+    changed_at  timestamptz not null default now(),
+    primary key (owner, object_id)
+);
+
 -- ---------------------------------------------------------------------------
 -- updated_at: kept up to date by Postgres. Adding or removing something in a
 -- collage counts as changing the collage, so recently changed ones come first.
@@ -110,6 +143,10 @@ drop trigger if exists collages_touch on public.collages;
 create trigger collages_touch before update on public.collages
     for each row execute function public.mili_touch();
 
+drop trigger if exists gardens_touch on public.gardens;
+create trigger gardens_touch before update on public.gardens
+    for each row execute function public.mili_touch();
+
 drop trigger if exists collage_items_touch on public.collage_items;
 create trigger collage_items_touch after insert or update or delete on public.collage_items
     for each row execute function public.mili_touch_collage();
@@ -123,6 +160,30 @@ create trigger collage_items_touch after insert or update or delete on public.co
 alter table public.notes enable row level security;
 alter table public.collages enable row level security;
 alter table public.collage_items enable row level security;
+alter table public.gardens enable row level security;
+alter table public.rotation enable row level security;
+alter table public.library_changes enable row level security;
+
+-- library changes: yours only
+drop policy if exists "your own library changes" on public.library_changes;
+create policy "your own library changes" on public.library_changes
+    for all to authenticated
+    using (owner = (select auth.uid()))
+    with check (owner = (select auth.uid()));
+
+-- rotation: yours only
+drop policy if exists "your own rotation" on public.rotation;
+create policy "your own rotation" on public.rotation
+    for all to authenticated
+    using (owner = (select auth.uid()))
+    with check (owner = (select auth.uid()));
+
+-- gardens: yours only
+drop policy if exists "your own garden" on public.gardens;
+create policy "your own garden" on public.gardens
+    for all to authenticated
+    using (owner = (select auth.uid()))
+    with check (owner = (select auth.uid()));
 
 -- notes
 drop policy if exists "read public notes and your own" on public.notes;
@@ -172,7 +233,9 @@ create policy "change items in your own collages" on public.collage_items
 -- Supabase doesn't hand out access to new tables by itself in this project, so
 -- it's given here: reading to everyone, writing to signed-in people. The
 -- policies above still decide which rows.
-revoke all on public.notes, public.collages, public.collage_items from anon, authenticated;
+revoke all on public.notes, public.collages, public.collage_items, public.gardens, public.rotation, public.library_changes from anon, authenticated;
+grant select, insert, update, delete on public.gardens, public.library_changes to authenticated;
+grant select, insert, delete on public.rotation to authenticated;
 grant select on public.notes, public.collages, public.collage_items to anon;
 grant select, insert, update, delete on public.notes, public.collages, public.collage_items to authenticated;
 
