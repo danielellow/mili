@@ -20,7 +20,9 @@
 --
 -- Your Bandcamp collection is added too (silver_bandcamp_collection): everything
 -- you bought, dated by when you bought it, and your wishlist as the queue.
--- Those rows already know their object, so they don't need matching here.
+-- So is every mix in seeds/mixes.csv (silver_mixes), with the status, date and
+-- collages written there. Those rows already know their object, so they
+-- don't need matching here.
 
 with rows as (
 
@@ -162,8 +164,32 @@ from_bandcamp as (
         or (c.decision = 'matched_bandcamp_page' and o.born_from = c.bandcamp_page_born_from)
         or (c.decision = 'new' and o.born_from = c.born_from)
 
+),
+
+from_mixes as (
+
+    select
+        md5('mix|' || m.url_key) as row_id,
+        m.url as link,
+        a.artist_credit as artist,
+        m.title,
+        m.added_on,
+        m.status,
+        m.collages,
+        m.note,
+        o.object_id,
+        'mixes_file' as found_by,
+        m.lookup_error as check_note
+    from {{ ref('silver_mixes') }} m
+    join {{ ref('gold_objects') }} o
+        on o.born_from = 'link:' || m.url_key
+    left join {{ ref('silver_mix_artists') }} a
+        on a.url_key = m.url_key
+
 )
 
 select * from from_file
 union all by name
 select * from from_bandcamp
+union all by name
+select * from from_mixes

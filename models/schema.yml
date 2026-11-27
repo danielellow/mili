@@ -225,10 +225,49 @@ models:
               arguments:
                 values: ['bandcamp_only', 'uncertain']
 
+  - name: bronze_mix_lookups
+    description: What SoundCloud (oEmbed), Mixcloud (API) and NTS (episode JSON) said about each mix link, as saved by ingest/lookup_mixes.py. One row per lookup.
+
+  - name: silver_mix_details
+    description: One row per mix link, with the title, uploader, artwork, date, length, genres and other links its platform gave. Links with no good answer keep their last error.
+    columns:
+      - name: url
+        data_tests: [unique, not_null]
+
   - name: silver_mixes
-    description: The mixes added by hand in seeds/mixes.csv, with the platform of each link.
+    description: The mixes in seeds/mixes.csv, with the platform of each link, what the platform said about it, and the library status, date and collages from the file.
     columns:
       - name: url_key
+        data_tests: [unique, not_null]
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['collection', 'queue']
+
+  - name: silver_artist_names
+    description: Every artist name mili knows (MusicBrainz artists by ID, Bandcamp-only artists as "name:…"), with the key its artist page uses. Used to link mixes to their DJ and Bandcamp-only releases to their artist.
+    columns:
+      - name: name_key
+        data_tests: [unique, not_null]
+      - name: artist_id
+        data_tests: [not_null]
+
+  - name: silver_mix_artists
+    description: Who each mix is by (given in the file, the uploader, a piece of the title, or no one mili knows), with the artist pages it goes on.
+    columns:
+      - name: url_key
+        data_tests: [unique, not_null]
+      - name: found_by
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['given', 'uploader', 'title', 'none']
+
+  - name: gold_object_artists
+    description: The artist pages each object belongs on, one row per object (MusicBrainz credits, Bandcamp-only artists by name, a mix's DJs).
+    columns:
+      - name: object_id
         data_tests: [unique, not_null]
 
   - name: gold_objects
@@ -335,7 +374,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['bandcamp_and_streaming', 'streaming_only', 'bandcamp_only', 'elsewhere', 'nowhere']
+                values: ['bandcamp_and_streaming', 'streaming_only', 'bandcamp_only', 'elsewhere', 'nowhere', 'mix']
 
   - name: silver_library
     description: Your library (seeds/library.csv and your Bandcamp collection), each row matched to a mili object. Rows from the file that aren't found have an empty object_id and a check_note.
@@ -475,9 +514,15 @@ seeds:
     description: Your library, one release or mix per row, pointed to by a link or by artist and title (see silver_library).
 
   - name: mixes
-    description: Mixes added by hand (NTS, Mixcloud ...), each with its link, title, DJ or show, and artwork. Each becomes a mili object.
+    description: Your DJ mixes (SoundCloud, Mixcloud, NTS), one link per row. Only mix_url is needed; artist, title, status, added_on, collages and note are optional. Each becomes a mili object and joins your library; ingest/lookup_mixes.py fills in the details.
     columns:
       - name: mix_url
+        data_tests: [unique, not_null]
+
+  - name: mix_stations
+    description: SoundCloud and Mixcloud accounts that are radio stations or mix series (NTS Radio, Rinse FM, Resident Advisor ...), so the DJ of their uploads is read from the title, not the uploader.
+    columns:
+      - name: uploader
         data_tests: [unique, not_null]
 
   - name: platform_domains

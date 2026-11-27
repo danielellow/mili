@@ -10,8 +10,9 @@
 // what the link is and where else it can be heard.
 // ↑ ↓ choose, Enter opens, Esc closes.
 
-import { data, normalize, searchLive, findEverywhere } from "./data.js";
+import { data, normalize, searchLive, findEverywhere, lookUpMix, mixDate, mixLength, findInMili } from "./data.js";
 import { h, mi } from "./ui.js";
+import { userData } from "./account.js";
 
 const PLACES = [
   { name: "home", href: "#/", icon: "logomark", words: "home catalogue labels start" },
@@ -22,6 +23,7 @@ const PLACES = [
   { name: "garden", href: "#/garden", icon: "garden", words: "garden plants" },
   { name: "settings", href: "#/settings", icon: "menu", words: "settings theme dark light accent export" },
   { name: "guide", href: "#/guide", icon: "menu", words: "guide help how" },
+  { name: "about", href: "#/about", icon: "logomark", words: "about what is mili" },
 ];
 
 let box = null;   // the open palette, if any
@@ -74,7 +76,11 @@ export function openPalette(startWith = "") {
     const words = normalize(q);
     const places = PLACES
       .filter((p) => !words || words.split(" ").every((w) => p.words.includes(w) || p.name.includes(w)))
-      .map((p) => ({ title: p.name, href: p.href, icon: p.icon, action: "go to" }));
+      .map((p) => ({ title: p.name, href: p.href, icon: p.icon, action: "go to" }))
+      // collages (yours, and public ones) by name
+      .concat(words ? userData.collages
+        .filter((c) => words.split(" ").every((w) => normalize(c.name).includes(w)))
+        .map((c) => ({ title: c.name, sub: `collage · ${c.items.length}`, href: `#/collage/${c.id}`, icon: "collage", action: "go to" })) : []);
 
     if (!q) { rows = places; chosen = 0; draw(); return; }
 
@@ -199,6 +205,26 @@ async function lookUpLink(url) {
         if (hit && data.byId.has(hit.object_id)) return open(hit.object_id, "in mili");
       }
     } catch { /* fall through to looking outside */ }
+  }
+
+  // a mix that isn't in mili: ask SoundCloud, Mixcloud or NTS what it is
+  if (/soundcloud\.com|mixcloud\.com|nts\.live/i.test(url) && data.supabase) {
+    const mix = await lookUpMix(url);
+    const known = !mix.error && findInMili(mix.artist, mix.title);
+    if (known) return open(known, "in mili");
+    if (!mix.error && mix.title) {
+      return [
+        { title: mix.title, sub: [mix.artist, mixDate(mix.date), mixLength(mix.length), "not in mili yet"].filter(Boolean).join(" · "),
+          cover: mix.cover ?? null, kind: "quiet", action: "mix" },
+        ...(mix.links || []).map((l) => ({ title: l.name, href: l.url, external: true, action: "listen ↗" })),
+      ];
+    }
+    if (mix.error) {
+      return [
+        { title: "not in mili yet", sub: mix.error, kind: "quiet", action: "" },
+        { title: "open the link", sub: url, href: url, external: true, action: "↗" },
+      ];
+    }
   }
 
   // not in mili: ask Odesli what it is and where else it can be heard

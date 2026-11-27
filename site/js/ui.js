@@ -55,6 +55,7 @@ export const availabilityText = {
   bandcamp_only: "Bandcamp only",
   elsewhere: "only YouTube or SoundCloud",
   nowhere: "no listen links found",
+  mix: "a mix on SoundCloud, Mixcloud or NTS",
 };
 
 export function availabilityDot(obj) {
@@ -126,7 +127,7 @@ export function dotKey() {
   return h(
     "div",
     { class: "dot-key" },
-    Object.entries(availabilityText).map(([key, text]) =>
+    Object.entries(availabilityText).filter(([key]) => key !== "mix").map(([key, text]) =>   // label pages have no mixes
       h("span", {}, h("span", { class: `dot ${key}` }), text)),
   );
 }

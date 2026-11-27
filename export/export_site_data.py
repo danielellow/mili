@@ -62,6 +62,7 @@ SOURCES = [
     "Cover images: Cover Art Archive (coverartarchive.org)",
     "Links found with Odesli (song.link), the Apple, Deezer and Spotify APIs, "
     "Discogs, and the labels' own Bandcamp pages",
+    "Mixes: details from SoundCloud, Mixcloud and NTS",
 ]
 
 
@@ -136,6 +137,12 @@ def main():
             order by object_id, track_no
         """)
         players = dict(con.execute("select object_id, embed from gold_bandcamp_players").fetchall())
+        mix_problems = con.execute("""
+            select url, coalesce(lookup_error, 'not looked up yet') as why
+            from silver_mixes
+            where not ready
+            order by url
+        """).fetchall()
         labels = read_table(con, """
             select label as name, slug, image, bandcamp_url as page, objects
             from gold_labels
@@ -222,6 +229,11 @@ def main():
     print(f"  supabase.json     {supabase_note}" if supabase else f"  (no supabase.json: {supabase_note})")
     print("By kind:", ", ".join(f"{k} {v:,}" for k, v in sorted(kinds.items())))
     print("Where they can be heard:", ", ".join(f"{k} {v:,}" for k, v in sorted(availability.items())))
+    if mix_problems:
+        print(f"\n{len(mix_problems)} mix link(s) in seeds/mixes.csv aren't on the site yet:")
+        for url, why in mix_problems:
+            print(f"  {url}\n    {why}")
+        print("  New links: run python ingest/lookup_mixes.py, then dbt build.")
 
 
 if __name__ == "__main__":

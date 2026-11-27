@@ -2,15 +2,18 @@
 -- ready to be written as JSON by export/export_site_data.py.
 --
 --   id, kind, title, artist, type, year, labels, cover, genres
---   artist_ids     MusicBrainz IDs of every artist in the credit, so "same
+--   artist_ids     the artist pages it belongs on (gold_object_artists):
+--                  MusicBrainz IDs of every artist in the credit, so "same
 --                  artist" also finds collaborations ("Kode9 & The Spaceape"
---                  relates to both Kode9 and The Spaceape)
+--                  relates to both Kode9 and The Spaceape); "name:…" for artists
+--                  MusicBrainz doesn't know; a mix's DJ(s)
+--   mix            for mixes: the date, the length in seconds, the uploader
 --   bandcamp_page  the Bandcamp account the release is sold from ("ad93", "swirlpeople"):
 --                  a label's or an artist's page. The atlas uses it to connect things
 --                  from the same small label or artist that MusicBrainz doesn't know.
 --   availability   where it can be heard: bandcamp_and_streaming,
 --                  streaming_only, bandcamp_only, or elsewhere (only YouTube,
---                  SoundCloud ...), or nowhere (no listen links)
+--                  SoundCloud ...), or nowhere (no listen links); "mix" for mixes
 --   listen         the row of listen links, in the platforms' order
 --   buy            the buy menu (Bandcamp, Discogs)
 --   versions       the versions page section ("2 versions · Wind (Deluxe Version)")
@@ -27,15 +30,12 @@ with labels as (
 
 ),
 
-artists as (
+mixes as (
 
     select
-        release_group_id as work_id,
-        list_distinct(list_filter(
-            json_extract_string(release_group_json, '$.artist-credit[*].artist.id'),
-            lambda a: a is not null
-        )) as artist_ids
-    from {{ ref('silver_mb_release_groups') }}
+        'link:' || url_key as born_from,
+        {'date': mix_date::varchar, 'length': length_seconds, 'uploader': uploader} as mix
+    from {{ ref('silver_mixes') }}
 
 ),
 
@@ -106,6 +106,7 @@ select
     coalesce(string_split(o.top_genres, ', '), []::varchar[]) as genres,
     li.bandcamp_page,
     case
+        when o.kind = 'mix' then 'mix'
         when li.object_id is null then 'nowhere'
         when li.on_bandcamp and li.on_streaming then 'bandcamp_and_streaming'
         when li.on_streaming then 'streaming_only'
@@ -115,10 +116,12 @@ select
     coalesce(v.versions_total, 0) as versions_total,
     coalesce(li.listen, []) as listen,
     coalesce(b.buy, []) as buy,
-    coalesce(v.versions, []) as versions
+    coalesce(v.versions, []) as versions,
+    mx.mix
 from {{ ref('gold_objects') }} o
 left join labels lb on lb.object_id = o.object_id
-left join artists a on a.work_id = o.work_id
+left join {{ ref('gold_object_artists') }} a on a.object_id = o.object_id
+left join mixes mx on mx.born_from = o.born_from
 left join listen li on li.object_id = o.object_id
 left join buy b on b.object_id = o.object_id
 left join versions v on v.object_id = o.object_id

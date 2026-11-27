@@ -183,6 +183,9 @@ export async function searchOutside(query) {
     for (const result of answer.results || []) {
       result.inMili = findInMili(result.artist, result.title);
     }
+    for (const mix of answer.mixes || []) {
+      mix.inMili = findInMili(mix.artist, mix.title);
+    }
     return answer;
   } catch (error) {
     return { error: error.name === "AbortError" ? "it didn't answer in time" : error.message };
@@ -215,8 +218,44 @@ export async function findEverywhere(link) {
   }
 }
 
+// A mix: what a SoundCloud, Mixcloud or NTS link is (title, DJ, artwork, date,
+// length, and where else it can be heard), from the same function at Supabase.
+// Returns { platform, title, artist, cover, date, length, links } or { error }.
+export async function lookUpMix(link) {
+  if (!data.supabase) return { error: "live search isn't set up" };
+  const { url, key } = data.supabase;
+  const headers = { apikey: key, "Content-Type": "application/json" };
+  if (!key.startsWith("sb_publishable_")) headers.Authorization = `Bearer ${key}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(`${url}/functions/v1/search-outside`, {
+      method: "POST", headers, body: JSON.stringify({ mix: link }), signal: controller.signal,
+    });
+    const answer = await response.json().catch(() => ({}));
+    if (!response.ok && !answer.error) throw new Error(`the search answered ${response.status}`);
+    return answer;
+  } catch (error) {
+    return { error: error.name === "AbortError" ? "it didn't answer in time" : error.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// A mix's date and length, the way pages show them: "12 Mar 2025", "1 h 59 min"
+export function mixDate(date) {
+  return date ? new Date(`${date}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "";
+}
+export function mixLength(seconds) {
+  if (!seconds) return "";
+  const total = Math.round(seconds / 60);          // whole minutes first, so 1:59:40 is "2 h 0 min"
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  return hours ? `${hours} h ${minutes} min` : `${minutes} min`;
+}
+
 // The mili object with this artist and title, if there is one
-function findInMili(artist, title) {
+export function findInMili(artist, title) {
   const a = normalize(artist).replace(/^the /, "");
   const t = normalize((title || "").replace(/\s*[\(\[][^\)\]]*[\)\]]/g, "").replace(/\s+-\s+(ep|single)$/i, ""));
   if (!a || !t) return null;

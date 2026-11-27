@@ -13,7 +13,8 @@ How it works:
   2. Connects to Supabase with SUPABASE_DB_URL from .env.
   3. Runs supabase/schema.sql, which creates the tables, indexes, the search
      function and the read-only rules the first time (and changes nothing
-     after that).
+     after that), and supabase/user_data.sql: the tables for the notes and
+     collages people make on the site, which step 4 never empties.
   4. Empties the tables and fills them again, all in one transaction. A
      transaction is all or nothing: if anything goes wrong halfway, Postgres
      undoes it, and the website keeps showing the data from the last load.
@@ -38,6 +39,8 @@ except ImportError:
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DUCKDB_FILE = PROJECT_ROOT / "data" / "mili.duckdb"
 SCHEMA_FILE = PROJECT_ROOT / "supabase" / "schema.sql"
+# notes and collages people make on the site: set up, never emptied (see the file)
+USER_DATA_FILE = PROJECT_ROOT / "supabase" / "user_data.sql"
 
 # Each Postgres table, its key, and the DuckDB query that fills it.
 # The column names in each query match the table in schema.sql.
@@ -186,8 +189,10 @@ def load(conn, data):
     with conn.cursor() as cur:
         cur.execute("set client_min_messages = warning")
 
-        # 1. Set the database up (only does something the first time)
+        # 1. Set the database up (only does something the first time), and the
+        #    tables for notes and collages, which the loading below never touches
         cur.execute(SCHEMA_FILE.read_text())
+        cur.execute(USER_DATA_FILE.read_text())
         conn.commit()
 
         # 2. Empty and refill, in one transaction

@@ -154,9 +154,14 @@ a.act:hover { color: var(--text); }
 .disc { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
         color: var(--dim); margin: 1.4rem 0 0.4rem 0.4rem; }
 .bandcamp-player { display: block; width: 100%; border: 0; }
+.mix-player { display: block; width: 100%; border: 0; }
+.mix-player.mixcloud { height: 120px; }
+.mix-player.soundcloud { height: 166px; }
+.outside-mixes { display: flex; align-items: baseline; gap: 0.8rem; font-size: 1.1rem; font-weight: 600; margin: 2rem 0 0.6rem; }
+.outside-mixes .n { font-family: var(--mono); font-weight: 400; font-size: 0.8rem; color: var(--faint); }
+.mix-line { font-family: var(--mono); font-size: 0.85rem; color: var(--dim); margin: 0.35rem 0 0; }
 .bandcamp-player.player-album { height: 470px; }
 .bandcamp-player.player-track { height: 120px; }
-.player-note { font-family: var(--mono); font-size: 0.75rem; color: var(--faint); margin: 0.6rem 0 0; }
 
 /* ---- covers ----------------------------------------------------------- */
 
@@ -221,6 +226,7 @@ a.act:hover { color: var(--text); }
 .dot.streaming_only, .seg.streaming_only { background: var(--dim); }
 .dot.bandcamp_only, .seg.bandcamp_only { background: var(--accent); }
 .dot.elsewhere { border: 1px solid var(--dim); }
+.dot.mix { border: 1px solid var(--accent); }
 .dot.nowhere { border: 1px dashed var(--faint); }
 .seg.elsewhere { background: var(--faint); }
 .seg.nowhere { background: repeating-linear-gradient(90deg, var(--line) 0 3px, transparent 3px 6px); }
@@ -520,6 +526,102 @@ kbd { font-family: var(--mono); font-size: 0.85em; border: 1px solid var(--line)
 .services .toggle { font-size: 1rem; margin-bottom: 0.7rem; }
 .services .toggle button { width: 2.2rem; height: 2rem; }
 .exports { display: flex; gap: 1.2rem; flex-wrap: wrap; font-family: var(--mono); }
+
+/* ---- notes ------------------------------------------------------------- */
+
+.notes { margin: 2.2rem 0 0; }
+.note-toggle { width: 2.6rem; height: 2.6rem; border-radius: 8px; display: inline-flex; align-items: center;
+               justify-content: center; color: var(--faint); background: var(--panel); }
+.note-toggle .mi { width: 20px; height: 20px; }
+.note-toggle:hover { color: var(--text); }
+.note-toggle.has, .note-toggle[aria-pressed="true"] { color: var(--accent); }
+.note-area { margin-top: 0.9rem; }
+.note-area[hidden] { display: none; }
+.note-input { display: block; width: 100%; min-height: 90px; resize: vertical; box-sizing: border-box;
+              background: var(--field); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+              padding: 0.9rem 1.1rem; font: inherit; font-size: 1.05rem; line-height: 1.55; outline: none; }
+.note-input:focus { border-color: var(--dim); }
+.note-input::placeholder { color: var(--faint); }
+.note-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: 0.9rem; }
+.note-button { border: 1px solid var(--line); border-radius: 10px; padding: 0.5rem 1rem; color: var(--text); }
+.note-button:hover:not(:disabled) { border-color: var(--dim); }
+.note-button:disabled { color: var(--faint); cursor: default; }
+.note-privacy { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--dim); padding: 0.5rem 0.3rem; }
+.note-privacy .mi { width: 16px; height: 16px; }
+.note-privacy:hover { color: var(--text); }
+.note-meta { font-family: var(--mono); font-size: 0.78rem; color: var(--faint); }
+.note-meta a { color: var(--dim); text-decoration: underline dotted; text-underline-offset: 3px; }
+.note.shared { border-left: 2px solid var(--line); padding: 0.1rem 0 0.1rem 1rem; margin-bottom: 1rem; }
+.note-body { white-space: pre-wrap; margin: 0 0 0.4rem; line-height: 1.55; }
+
+/* ---- collages ---------------------------------------------------------- */
+
+.collage-pick { position: relative; display: inline-flex; }
+.collage-pick > .act:hover { color: var(--text); }
+.collage-pick > .act.on:hover { color: var(--accent); }
+.collage-menu { top: 2.2rem; left: -1rem; gap: 0.15rem; min-width: 15rem; padding: 0.9rem 0.8rem; }
+.menu-head { font-family: var(--mono); font-size: 0.75rem; color: var(--faint); margin: 0 0 0.5rem 0.5rem; }
+.menu-note { font-family: var(--mono); font-size: 0.78rem; color: var(--dim); margin: 0.3rem 0.5rem; }
+.menu-note a { text-decoration: underline dotted; text-underline-offset: 3px; }
+.collage-choice { display: flex; align-items: baseline; gap: 0.7rem; text-align: left; padding: 0.45rem 0.5rem;
+                  border-radius: 6px; color: var(--dim); }
+.collage-choice:hover { background: var(--panel); color: var(--text); }
+.collage-choice.in { color: var(--text); }
+.collage-choice .tick { font-family: var(--mono); width: 1rem; color: var(--faint); }
+.collage-choice.in .tick { color: var(--accent); }
+.collage-choice .n { margin-left: auto; font-family: var(--mono); font-size: 0.75rem; color: var(--faint); }
+.collage-new { margin: 0.5rem 0.2rem 0; padding: 0.55rem 0.7rem; background: var(--field); border: 1px solid var(--line);
+               border-radius: 8px; outline: none; font-size: 0.95rem; }
+.collage-new:focus { border-color: var(--dim); }
+.collage-line .mi.small { margin-right: 0.2rem; }
+.collage-line a { color: var(--text); }
+.collage-line a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.collage-line[hidden] { display: none; }
+
+.collage-cover { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 2px;
+                 overflow: hidden; box-sizing: border-box; background: var(--line); }
+.collage-cover .cover.small { width: 100%; height: 100%; border: 0; box-sizing: border-box; }
+.release h1 .bracket { font-family: var(--mono); font-size: 0.95rem; font-weight: 400; }
+.collage-cover.empty { display: flex; align-items: center; justify-content: center; color: var(--faint); }
+.collage-cover.empty .mi { width: 32px; height: 32px; }
+.collage-name { display: block; width: 100%; box-sizing: border-box; font: inherit; font-size: 2rem; font-weight: 600;
+                background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 0.4rem 0.8rem; outline: none; }
+.set-head { display: flex; align-items: baseline; gap: 0.9rem; font-size: 1.35rem; font-weight: 600; margin: 2.6rem 0 0.8rem; }
+.set-head .n { font-family: var(--mono); font-weight: 400; font-size: 0.85rem; color: var(--faint); }
+.bracket.remove { font-family: var(--mono); font-size: 0.78rem; color: var(--faint); }
+.bracket.remove:hover { color: var(--text); }
+.bracket.danger:hover { color: #e5484d; }
+.chip .mi.small:last-child { margin: 0 0 0 0.45rem; }
+.chip.new-collage { color: var(--faint); border-style: dashed; }
+.chip.new-collage:hover { color: var(--text); }
+.collage-new-chip { background: var(--field); outline: none; min-width: 16rem; color: var(--text); }
+
+.field { padding: 0.65rem 0.9rem; background: var(--field); border: 1px solid var(--line); border-radius: 10px; outline: none; }
+.field:focus { border-color: var(--dim); }
+
+/* ---- sign in, and about ------------------------------------------------- */
+
+/* no top bar on the sign-in page: just "mili" in the middle, over the form */
+body[data-page="sign-in"] header.top { display: none; }
+.sign-in-page { max-width: 36rem; min-height: 100vh; margin: 0 auto; box-sizing: border-box;
+                display: flex; flex-direction: column; justify-content: center; padding-top: 0; padding-bottom: 12vh; }
+.sign-in-word { display: block; width: fit-content; margin: 0 auto 3.4rem; color: var(--text); }
+.sign-in-word .mi { width: 104px; height: 62px; }
+.sign-in { display: flex; flex-direction: column; align-items: flex-start; }
+.sign-in label { color: var(--dim); font-size: 1.05rem; margin: 0 0 0.6rem; }
+.sign-in .field { width: 100%; box-sizing: border-box; padding: 1rem 1.1rem; font-size: 1.05rem; margin: 0 0 1.6rem; }
+.sign-in .note-button { padding: 0.55rem 1rem; font-size: 1.05rem; }
+.sign-in-problem { margin: 0.9rem 0 0; min-height: 1em; }
+.sign-in-links { margin: 1.4rem 0 0; font-size: 0.95rem; }
+.sign-in-links a { color: var(--dim); text-decoration: underline dotted; text-underline-offset: 4px; }
+.sign-in-links a:hover { color: var(--text); }
+a.note-button { display: inline-block; }
+
+.about { max-width: 42rem; }
+.about p, .about li { font-size: 1.1rem; line-height: 1.7; color: var(--text); }
+.about p { margin: 0 0 1.2rem; }
+.about h2 { margin-top: 2.4rem; }
+.about a { text-decoration: underline dotted; text-underline-offset: 4px; }
 
 /* ---- small screens ---------------------------------------------------- */
 

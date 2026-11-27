@@ -7,7 +7,8 @@
 --   musicbrainz     a MusicBrainz work (release group), as in gold_works
 --   bandcamp_page   a release on a label's own Bandcamp page that MusicBrainz
 --                   doesn't have (decision = bandcamp_only in silver_bandcamp_unmatched)
---   added_by_hand   a mix from seeds/mixes.csv
+--   added_by_hand   a mix from seeds/mixes.csv (its DJ from silver_mix_artists,
+--                   its date, genres and artwork from SoundCloud, Mixcloud or NTS)
 --   bandcamp_collection  something from your Bandcamp collection that mili didn't
 --                   know yet (decision = new in silver_bandcamp_collection); a
 --                   track you bought stays a track
@@ -82,19 +83,22 @@ bandcamp_objects as (
 mix_objects as (
 
     select
-        'link:' || url_key as born_from,
+        'link:' || m.url_key as born_from,
         'mix' as kind,
         'added_by_hand' as identity_source,
         null::varchar as work_id,
-        title,
-        artist as artist_credit,
+        m.title,
+        a.artist_credit,
         null::varchar as work_type,
         null::varchar as secondary_types,
-        null::varchar as first_release_date,
-        null::integer as first_release_year,
-        null::varchar as top_genres,
-        nullif(artwork_url, '') as cover_url
-    from {{ ref('silver_mixes') }}
+        m.mix_date::varchar as first_release_date,
+        year(m.mix_date)::integer as first_release_year,
+        nullif(array_to_string(m.genres[1:5], ', '), '') as top_genres,
+        nullif(m.artwork_url, '') as cover_url
+    from {{ ref('silver_mixes') }} m
+    left join {{ ref('silver_mix_artists') }} a
+        on a.url_key = m.url_key
+    where m.ready                   -- looked up, or given a title in the file
 
 ),
 

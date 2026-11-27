@@ -11,6 +11,9 @@
 //   #/garden               the garden
 //   #/settings             dark or light, accent colour, and more
 //   #/guide                how mili works
+//   #/collage/<id>         one collage: a list of releases and mixes, with a note
+//   #/sign-in              signing in (to write notes and make collages)
+//   #/about                what is mili (written in site/about.md)
 // Press / (or ⌘K, or the + in the top bar) to open the search box (palette.js).
 // Because it's all after "#", the site is just files: no server is needed.
 
@@ -21,6 +24,7 @@ import * as pages from "./pages.js";
 import { atlas, walkBack } from "./atlas.js";
 import { garden } from "./garden.js";
 import { openPalette, closePalette } from "./palette.js";
+import { loadCollages, onChange, canSave, me } from "./account.js";
 
 applyTheme();     // before anything is drawn, so there's no flash of the wrong theme
 
@@ -61,10 +65,20 @@ async function show() {
     else if (page === "atlas") content = atlas(arg);
     else if (page === "garden") content = await garden(params);
     else if (page === "settings") content = pages.settings();
+    else if (page === "collage") content = await pages.collage(arg);
+    else if (page === "sign-in") content = pages.signInPage(params);
+    else if (page === "about") content = await pages.aboutPage();
     else content = pages.notFound("This page doesn't exist.");
   } catch (error) {
     console.error(error);
     content = pages.notFound(`Something went wrong: ${error.message}`);
+  }
+  // the menu's last line: "sign in", or "account" when signed in
+  const account = document.getElementById("menu-account");
+  if (account) {
+    account.hidden = !canSave();
+    account.textContent = me() ? "account" : "sign in";
+    account.href = name === "sign-in" ? location.hash : `#/sign-in?back=${encodeURIComponent(location.hash || "#/")}`;
   }
   view.replaceChildren(content);
   window.scrollTo(0, 0);
@@ -130,7 +144,13 @@ async function start() {
       "If you opened index.html straight from the folder, start a small local server instead: see site/README.md."));
     return;
   }
+  // collages (public ones, and your own when signed in): wait a moment for
+  // them, but don't hold the page up if Supabase is slow
+  await Promise.race([loadCollages(), new Promise((resolve) => setTimeout(resolve, 2500))]);
   show();
 }
+
+// signing in or out changes what the page shows: draw it again
+onChange((kind) => { if (kind === "session") show(); });
 
 start();

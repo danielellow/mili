@@ -55,6 +55,12 @@ the site searches in the browser instead, and the results page says so.
 - `js/ui.js`: small shared pieces (covers, rows, the coloured dots)
 - `js/pages.js`: the pages: home (getting started), search results, release, artist, label, library, settings, guide
 - `js/palette.js`: the search box that "/" opens
+- `js/account.js`: signing in, and saving notes and collages in Supabase
+- `js/notes.js`: the note on a release, mix or collage (the pencil)
+- `js/collages.js`: collages: adding to them, and the collage page
+- `about.md`: the "what is mili" page (#/about). Write it like a plain text
+  file: an empty line starts a new paragraph, "# " makes a heading, "- " a list,
+  [words](https://…) a link and **words** bold.
 - `js/atlas.js`: the atlas (one object in the middle, three rings of things related to it)
 - `js/theme.js`: dark or light, and the accent colour, kept in this browser
 - `js/garden.js`: the garden (shape the ground, plant your library, tend the plants)
@@ -66,3 +72,11 @@ the site searches in the browser instead, and the results page says so.
 The garden is kept in the browser you made it in. To show it on the published
 site, press **save** in the garden, which downloads `garden.json`, and put that
 file in `site/data/`. Visitors who haven't started their own garden see yours.
+
+## Notes and collages
+
+Signed in (the menu → sign in), you can write a note on any release, mix or
+collage, and gather releases and mixes into collages. They're saved in Supabase
+(`supabase/user_data.sql`), so they're the same on every device and on the
+published site. Notes start private and collages start public; both can be
+switched. Accounts are made in the Supabase dashboard: see `supabase/README.md`.

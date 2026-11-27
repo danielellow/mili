@@ -3,7 +3,8 @@
 --   MusicBrainz works   all their instances from gold_instances (with the
 --                       sources that gave each link)
 --   Bandcamp-only       the release's page on the label's Bandcamp
---   mixes               the link added by hand
+--   mixes               the link added by hand, and where else the platform
+--                       says it can be heard (an NTS episode's Mixcloud page)
 --
 -- Each link also says which VERSION of the work it is (gold_object_versions),
 -- read from the title the platform shows (silver_link_versions).
@@ -69,6 +70,31 @@ from_mixes as (
 
 ),
 
+from_mix_other_links as (
+
+    select
+        o.object_id,
+        case
+            when l.link like '%mixcloud.com%' then 'mixcloud'
+            when l.link like '%soundcloud.com%' then 'soundcloud'
+            when l.link like '%nts.live%' then 'nts'
+        end as platform_id,
+        l.link as url,
+        'nts' as sources,
+        'named_by_platform' as methods,
+        1.0::double as confidence,
+        null::varchar as relation_types,
+        0::bigint as editions_linked,
+        true as linked_at_album_level
+    from (
+        select url_key, unnest(other_links) as link
+        from {{ ref('silver_mixes') }}
+    ) l
+    join {{ ref('gold_objects') }} o
+        on o.born_from = 'link:' || l.url_key
+
+),
+
 from_collection as (
 
     -- the Bandcamp page of something from your collection that mili didn't know yet
@@ -130,6 +156,8 @@ all_instances as (
     select * from from_bandcamp
     union all by name
     select * from from_mixes
+    union all by name
+    select * from from_mix_other_links
     union all by name
     select * from from_collection
     union all by name

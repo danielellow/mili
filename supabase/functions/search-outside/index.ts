@@ -1,6 +1,6 @@
 // mili: search outside mili.
 //
-// A small function that runs at Supabase (an "Edge Function"). It does two things:
+// A small function that runs at Supabase (an "Edge Function"). It does three things:
 //
 // 1. Search. When mili doesn't have a release, the website asks this function,
 //    which asks four catalogues at the same time:
@@ -11,12 +11,19 @@
 //      Discogs       the record database (needs your Discogs token)
 //    It puts results that are the same release together (same artist and
 //    title), and sends back one list, best matches first.
+//    It also asks Mixcloud for DJ mixes and radio shows (NTS archives every
+//    show there), sent back as a separate list, "mixes".
 //      body: {"query": "aphex twin syro"}
 //
 // 2. Find everywhere. Given one link to a release (Apple Music or Deezer),
 //    it asks Odesli (song.link) for the same release on the other platforms:
 //    Spotify, YouTube, YouTube Music, Tidal, Amazon Music, SoundCloud …
 //      body: {"everywhere": "https://music.apple.com/us/album/syro/905386014"}
+//
+// 3. A mix. Given a SoundCloud, Mixcloud or NTS link, it says what the mix is:
+//    title, DJ, artwork, date, length, and where else it can be heard (an NTS
+//    episode's Mixcloud page). The same lookups as ingest/lookup_mixes.py.
+//      body: {"mix": "https://www.nts.live/shows/…/episodes/…"}
 //
 // The website calls it like this:
 //   POST https://<project>.supabase.co/functions/v1/search-outside
@@ -87,6 +94,136 @@ async function getJson(url: string, extraHeaders: Record<string, string> = {}): 
   } finally {
     clearTimeout(timer);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Mixes (SoundCloud, Mixcloud, NTS)
+// ---------------------------------------------------------------------------
+
+type Mix = {
+  platform: string;          // mixcloud, soundcloud or nts
+  title: string;
+  artist: string;            // the DJ, as well as can be told
+  uploader: string | null;   // the account it's on
+  cover: string | null;
+  url: string;
+  date: string | null;       // 2025-03-12
+  length: number | null;     // seconds
+  tags: string[];
+  links: { platform: string; name: string; url: string }[];
+};
+
+// Accounts that upload other people's mixes, so the DJ is in the title
+// (the same idea as seeds/mix_stations.csv, kept short here)
+const STATIONS = new Set([
+  "nts radio", "nts", "rinse fm", "worldwide fm", "dublab", "the lot radio", "cashmere radio",
+  "noods radio", "kiosk radio", "radio alhara", "threads radio", "foundation fm", "balamii",
+  "berlin community radio", "hor berlin", "red light radio", "bbc radio 1", "bbc radio 6 music",
+  "resident advisor", "boiler room", "dekmantel", "crack magazine", "fact", "mixmag", "fabric london",
+  "xlr8r", "truants", "secret thirteen",
+]);
+
+// "Call Super - 12th March 2025" by NTS Radio -> "Call Super";
+// "Boiler Room: Objekt" by Boiler Room -> "Objekt";
+// "Soup To Nuts w/ Manara" (NTS) -> "Soup To Nuts"; a DJ's own upload -> the uploader
+function mixArtist(title: string, uploader: string | null): string {
+  if (uploader && !STATIONS.has(normalize(uploader))) return uploader;
+  const pieces = title.split(/\s+[-–—|]\s+|:\s+/)
+    .map((piece) => piece
+      .replace(/^#?[A-Za-z]{0,6}[.#]?\s?\d+[a-z]?[.:]?\s+(?=\S)/, "")   // "RA.912 Tsvi" -> "Tsvi"
+      .replace(/\s+(?:w\/|with)\s+.*$/i, "")
+      .trim())
+    .filter((piece) => piece && !STATIONS.has(normalize(piece)) && normalize(piece) !== normalize(uploader || ""));
+  return pieces[0] || uploader || "";
+}
+
+function mixcloudMix(c: any): Mix {
+  const url = c.url || `https://www.mixcloud.com${c.key}`;
+  return {
+    platform: "mixcloud",
+    title: c.name,
+    artist: mixArtist(c.name || "", c.user?.name || null),
+    uploader: c.user?.name || null,
+    cover: c.pictures?.extra_large || c.pictures?.large || c.pictures?.medium || null,
+    url,
+    date: (c.created_time || "").slice(0, 10) || null,
+    length: c.audio_length ?? null,
+    tags: (c.tags || []).map((t: any) => t.name).filter(Boolean),
+    links: [{ platform: "mixcloud", name: "Mixcloud", url }],
+  };
+}
+
+// Mixcloud's public search: mixes and radio shows whose title or DJ fits
+async function mixcloud(query: string): Promise<Mix[]> {
+  const answer = await getJson(
+    `https://api.mixcloud.com/search/?q=${encodeURIComponent(query)}&type=cloudcast&limit=${PER_SOURCE}`,
+  );
+  const words = normalize(query).split(" ").filter(Boolean);
+  return (answer.data || [])
+    .map(mixcloudMix)
+    .filter((m: Mix) => {
+      // at least half the words in the title or the uploader's name
+      const text = normalize(`${m.title} ${m.uploader || ""}`);
+      return words.filter((w) => text.includes(w)).length >= Math.ceil(words.length / 2);
+    })
+    .slice(0, 6);
+}
+
+// What a SoundCloud, Mixcloud or NTS link is
+async function mixDetails(link: string): Promise<Mix | { error: string }> {
+  const address = new URL(link);
+  const host = address.hostname.replace(/^(www|m)\./, "");
+  const parts = address.pathname.split("/").filter(Boolean);
+
+  if (host.endsWith("mixcloud.com")) {
+    if (parts.length < 2) return { error: "this is a Mixcloud profile, not a mix" };
+    return mixcloudMix(await getJson(`https://api.mixcloud.com/${parts[0]}/${parts[1]}/`));
+  }
+
+  if (host.endsWith("nts.live")) {
+    const found = address.pathname.match(/\/shows\/([^/]+)\/episodes\/([^/]+)/);
+    if (!found) return { error: "this is an NTS show, not an episode" };
+    const e = await getJson(`https://www.nts.live/api/v2/shows/${found[1]}/episodes/${found[2]}`);
+    const others = [e.mixcloud, ...(e.audio_sources || []).map((a: any) => a?.url)]
+      .filter((u: any) => typeof u === "string" && u.startsWith("http"));
+    const links = [{ platform: "nts", name: "NTS", url: link }];
+    for (const u of new Set(others)) {
+      if (u.includes("mixcloud.com")) links.push({ platform: "mixcloud", name: "Mixcloud", url: u });
+      else if (u.includes("soundcloud.com")) links.push({ platform: "soundcloud", name: "SoundCloud", url: u });
+    }
+    return {
+      platform: "nts",
+      title: e.name,
+      artist: mixArtist(e.name || "", null),
+      uploader: null,
+      cover: e.media?.picture_large || e.media?.background_large || null,
+      url: link,
+      date: (e.broadcast || "").slice(0, 10) || null,
+      length: null,
+      tags: (e.genres || []).map((g: any) => g.value).filter(Boolean),
+      links,
+    };
+  }
+
+  if (host.endsWith("soundcloud.com")) {
+    const o = await getJson(`https://soundcloud.com/oembed?format=json&url=${encodeURIComponent(link)}`);
+    const uploader = o.author_name || null;
+    const title = String(o.title || "").replace(new RegExp(`\\s+by\\s+${(uploader || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`), "");
+    return {
+      platform: "soundcloud",
+      title,
+      artist: mixArtist(title, uploader),
+      uploader,
+      cover: o.thumbnail_url ? String(o.thumbnail_url).replace("-large.", "-t500x500.") : null,
+      url: link,
+      date: null,
+      length: null,
+      tags: [],
+      links: [{ platform: "soundcloud", name: "SoundCloud", url: link }],
+    };
+  }
+
+  return { error: "not a SoundCloud, Mixcloud or NTS link" };
 }
 
 // MusicBrainz: every word has to be in the title or the artist
@@ -291,10 +428,12 @@ Deno.serve(async (req) => {
 
   let query = "";
   let link = "";
+  let mixLink = "";
   try {
     const body = await req.json();
     query = String(body.query || "").trim().slice(0, 120);
     link = String(body.everywhere || "").trim();
+    mixLink = String(body.mix || "").trim();
   } catch (_) {
     return reply({ error: "The body should be JSON: {\"query\": \"…\"}" }, 400);
   }
@@ -304,12 +443,25 @@ Deno.serve(async (req) => {
     }
     return reply(await everywhere(link));
   }
+  if (mixLink) {
+    if (!/^https:\/\/([a-z]+\.)?(soundcloud\.com|mixcloud\.com|nts\.live)\//.test(mixLink)) {
+      return reply({ error: "a mix link is a SoundCloud, Mixcloud or NTS link" }, 400);
+    }
+    try {
+      return reply(await mixDetails(mixLink));
+    } catch (error) {
+      const reason = (error as Error)?.name === "AbortError" ? "didn't answer in time" : String((error as Error)?.message || error);
+      return reply({ error: reason });
+    }
+  }
   if (!normalize(query)) return reply({ query, results: [], sources: {} });
 
   const started = Date.now();
   const asked = { musicbrainz, apple_music: apple, deezer, discogs } as Record<string, (q: string) => Promise<Found[]>>;
   const names = Object.keys(asked);
+  const mixesAsked = mixcloud(query);              // asked at the same time as the others
   const answers = await Promise.allSettled(names.map((name) => asked[name](query)));
+  const [mixAnswer] = await Promise.allSettled([mixesAsked]);
 
   const sources: Record<string, unknown> = {};
   const found: Found[] = [];
@@ -323,5 +475,14 @@ Deno.serve(async (req) => {
     }
   });
 
-  return reply({ query, ms: Date.now() - started, sources, results: combine(query, found) });
+  let mixes: Mix[] = [];
+  if (mixAnswer.status === "fulfilled") {
+    mixes = mixAnswer.value;
+    sources.mixcloud = { found: mixes.length };
+  } else {
+    const reason = mixAnswer.reason?.name === "AbortError" ? "didn't answer in time" : String(mixAnswer.reason?.message || mixAnswer.reason);
+    sources.mixcloud = { error: reason };
+  }
+
+  return reply({ query, ms: Date.now() - started, sources, results: combine(query, found), mixes });
 });
