@@ -185,8 +185,8 @@ export async function updateCollage(id, change) {
 export async function deleteCollage(id) {
   await rest(`collages?id=eq.${id}`, { method: "DELETE" });
   userData.collages = userData.collages.filter((c) => c.id !== id);
-  // its note goes too
-  if (session) await rest(`notes?owner=eq.${session.user.id}&about=eq.${encodeURIComponent(`collage:${id}`)}`, { method: "DELETE" }).catch(() => {});
+  // its notes go too: on the collage, and on the items in it
+  if (session) await rest(`notes?owner=eq.${session.user.id}&about=like.${encodeURIComponent(`collage:${id}`)}*`, { method: "DELETE" }).catch(() => {});
   changed("collages");
 }
 
@@ -205,36 +205,87 @@ export async function addToCollage(collageId, objectId) {
 
 export async function removeFromCollage(collageId, objectId) {
   await rest(`collage_items?collage_id=eq.${collageId}&object_id=eq.${encodeURIComponent(objectId)}`, { method: "DELETE" });
+  // your notes on it in this collage go with it
+  if (session) await rest(`notes?owner=eq.${session.user.id}&about=eq.${encodeURIComponent(`collage:${collageId}:${objectId}`)}`, { method: "DELETE" }).catch(() => {});
   const collage = collageById(collageId);
   if (collage) { collage.items = collage.items.filter((id) => id !== objectId); bump(collage); }
   changed("collages");
 }
 
 // ---------------------------------------------------------------------------
-// Notes: one per person per thing ("about" is a mili ID, or "collage:<id>")
+// Covers: an image you upload for a collage, kept in the public "covers"
+// bucket in Supabase Storage, in a folder named after you
 // ---------------------------------------------------------------------------
 
+// The picture made square (cut from the middle) and 800 px, as a JPEG
+async function squareJpeg(file, size = 800) {
+  const picture = await createImageBitmap(file);
+  const side = Math.min(picture.width, picture.height);
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = Math.min(size, side);
+  canvas.getContext("2d").drawImage(picture,
+    (picture.width - side) / 2, (picture.height - side) / 2, side, side,
+    0, 0, canvas.width, canvas.height);
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.86));
+}
+
+// Upload a picture; gives back its public address
+export async function uploadCover(file) {
+  if (!session) throw new Error("sign in to upload");
+  if (!/^image\//.test(file.type)) throw new Error("that isn't a picture");
+  const blob = await squareJpeg(file);
+  const path = `${session.user.id}/${crypto.randomUUID()}.jpg`;
+  const { url, key } = data.supabase;
+  const response = await fetch(`${url}/storage/v1/object/covers/${path}`, {
+    method: "POST",
+    headers: { apikey: key, Authorization: `Bearer ${await accessToken()}`, "Content-Type": "image/jpeg" },
+    body: blob,
+  });
+  if (!response.ok) {
+    const answer = await response.json().catch(() => ({}));
+    throw new Error(answer.message || answer.error || `the upload answered ${response.status}`);
+  }
+  return `${url}/storage/v1/object/public/covers/${path}`;
+}
+
+// ---------------------------------------------------------------------------
+// Notes: as many as you like on each thing. "about" says what a note is on:
+// a mili ID, "collage:<id>", or an item in a collage, "collage:<id>:<mili ID>"
+// ---------------------------------------------------------------------------
+
+const NOTE_FIELDS = "id,owner,about,body,is_public,created_at,updated_at";
+
+// the notes on one thing that you can see, oldest first
 export async function notesAbout(about) {
   if (!canSave()) return [];
-  return rest(`notes?about=eq.${encodeURIComponent(about)}&select=owner,about,body,is_public,updated_at&order=updated_at.desc`);
+  return rest(`notes?about=eq.${encodeURIComponent(about)}&select=${NOTE_FIELDS}&order=created_at.asc`);
+}
+
+// the notes on everything whose "about" starts with this (all the items in a collage)
+export async function notesStartingWith(prefix) {
+  if (!canSave()) return [];
+  return rest(`notes?about=like.${encodeURIComponent(prefix)}*&select=${NOTE_FIELDS}&order=created_at.asc`);
 }
 
 // Every note you've written, newest first (for the profile page)
 export async function myNotes() {
   if (!session) return [];
-  return rest(`notes?owner=eq.${session.user.id}&select=about,body,is_public,updated_at&order=updated_at.desc`);
+  return rest(`notes?owner=eq.${session.user.id}&select=${NOTE_FIELDS}&order=updated_at.desc`);
 }
 
-export async function saveNote(about, body, isPublic) {
+export async function addNote(about, body, isPublic = false) {
   if (!session) throw new Error("sign in to write notes");
-  if (!body.trim()) {
-    await rest(`notes?owner=eq.${session.user.id}&about=eq.${encodeURIComponent(about)}`, { method: "DELETE" });
-    return null;
-  }
-  const [row] = await rest("notes?on_conflict=owner,about", {
-    method: "POST",
-    body: { owner: session.user.id, about, body, is_public: isPublic },
-    prefer: "resolution=merge-duplicates,return=representation",
+  const [row] = await rest("notes", {
+    method: "POST", body: { owner: session.user.id, about, body, is_public: isPublic }, prefer: "return=representation",
   });
   return row;
+}
+
+export async function updateNote(id, change) {
+  const [row] = await rest(`notes?id=eq.${id}`, { method: "PATCH", body: change, prefer: "return=representation" });
+  return row;
+}
+
+export async function deleteNote(id) {
+  await rest(`notes?id=eq.${id}`, { method: "DELETE" });
 }

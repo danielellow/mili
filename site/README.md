@@ -75,8 +75,11 @@ file in `site/data/`. Visitors who haven't started their own garden see yours.
 
 ## Notes and collages
 
-Signed in (the menu → sign in), you can write a note on any release, mix or
-collage, and gather releases and mixes into collages. They're saved in Supabase
+Signed in (the menu → sign in), you can write notes on any release, mix or
+collage (as many as you like), and gather releases and mixes into collages.
+On a collage, [edit] lets you rename it, annotate it and each thing in it,
+make it private, choose its cover (an item's art, or a picture you upload),
+and delete it. They're saved in Supabase
 (`supabase/user_data.sql`), so they're the same on every device and on the
 published site. Notes start private and collages start public; both can be
 switched. Accounts are made in the Supabase dashboard: see `supabase/README.md`.

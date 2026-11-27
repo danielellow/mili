@@ -15,6 +15,7 @@ import { notesBlock } from "./notes.js";
 import {
   canSave, me, userData, isMine, myCollages, collageById, collagesWith, loadCollages,
   createCollage, updateCollage, deleteCollage, addToCollage, removeFromCollage, onChange, myNotes,
+  notesStartingWith, uploadCover,
 } from "./account.js";
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -110,15 +111,27 @@ export function collageLine(objectId) {
 // The collage page
 // ---------------------------------------------------------------------------
 
-// A 2 × 2 of the first covers, or the collage icon when it's empty
-function collageCover(collage, size = "large") {
+// The cover: the one chosen for the collage (an item's art, or an uploaded
+// picture), or else a 2 × 2 of the first covers, or the collage icon when empty
+function fourCovers(collage, size) {
   const objects = collage.items.map((id) => data.byId.get(id)).filter(Boolean).slice(0, 4);
   if (!objects.length) return h("div", { class: `cover ${size} collage-cover empty` }, mi("collage"));
   return h("div", { class: `cover ${size} collage-cover` }, objects.map((o) => cover(o, "small")));
 }
+export function collageCover(collage, size = "large") {
+  if (collage.cover?.startsWith("object:")) {
+    const obj = data.byId.get(collage.cover.slice(7));
+    if (obj) return cover(obj, size);
+  } else if (collage.cover) {
+    const img = h("img", { class: `cover ${size}`, src: collage.cover, alt: "" });
+    img.addEventListener("error", () => img.replaceWith(fourCovers(collage, size)));
+    return img;
+  }
+  return fourCovers(collage, size);
+}
 
 // One collage as a row in a list (on the profile page); "meta" replaces
-// its public/private label (for a note on it, the note's own)
+// its public/private label
 function collageRow(collage, meta = null) {
   return h("a", { class: "row", href: `#/collage/${collage.id}` },
     collageCover(collage, "small"),
@@ -128,6 +141,13 @@ function collageRow(collage, meta = null) {
     h("div", { class: "row-meta" }, h("span", { class: "added" }, meta ?? (collage.is_public ? "public" : "private"))));
 }
 
+// A button inside a row (which is a link): don't follow the link when it's pressed
+function rowButton(label, onPress) {
+  const button = h("button", { class: "note-button small" }, label);
+  button.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); onPress(button); });
+  return button;
+}
+
 export async function collagePage(id) {
   if (!canSave()) return missing("Collages need the live database (supabase.json).");
   if (!userData.loaded || !collageById(id)) await loadCollages();
@@ -135,101 +155,188 @@ export async function collagePage(id) {
   if (!collage) return missing("This collage isn't here: it may be private, or deleted.");
   const mine = isMine(collage);
 
+  // The page is drawn once, with the edit-only parts in it; [edit] and [done]
+  // switch them on and off (a class on the page), so nothing typed is lost.
   const page = h("section", { class: "page collage-page" });
-  const head = h("div", { class: "release-main" });
+  const setEditing = (on) => page.classList.toggle("editing", on);
 
-  function drawHead(editing = false) {
-    const facts = [plural(collage.items.length, "item", "items"), collage.is_public ? "public" : "private", mine ? "yours" : null]
-      .filter(Boolean).join(" · ");
-    if (!editing) {
-      head.replaceChildren(
-        h("h1", {}, collage.name, h("span", { class: "badge" }, "collage"),
-          mine ? h("button", { class: "bracket", onclick: () => drawHead(true) }, "[edit]") : null),
-        h("p", { class: "byline" }, facts));
-      return;
+  // --- the cover, and "set cover"
+  const coverBox = h("div", { class: "collage-cover-box" });
+  const drawCover = () => coverBox.replaceChildren(collageCover(collage), mine ? coverPicker() : null);
+
+  function coverPicker() {
+    const panel = h("div", { class: "menu cover-menu", hidden: true });
+    panel.addEventListener("click", (event) => event.stopPropagation());
+    const bar = h("button", { class: "set-cover edit-only" }, "set cover");
+    bar.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const opening = panel.hidden;
+      for (const m of document.querySelectorAll(".menu")) m.hidden = true;
+      panel.hidden = !opening;
+      if (opening) drawPanel();
+    });
+    const status = h("p", { class: "menu-note" });
+    const choose = async (cover, waitingText) => {
+      status.textContent = waitingText;
+      try {
+        await updateCollage(collage.id, { cover });
+        drawCover();
+      } catch (error) {
+        status.textContent = `didn't work: ${error.message}`;
+      }
+    };
+    const file = h("input", { type: "file", accept: "image/*", hidden: true });
+    file.addEventListener("change", async () => {
+      if (!file.files[0]) return;
+      status.textContent = "uploading…";
+      try {
+        const address = await uploadCover(file.files[0]);
+        await choose(address, "saving…");
+      } catch (error) {
+        status.textContent = `the upload didn't work: ${error.message}`;
+      }
+    });
+    function drawPanel() {
+      const art = collage.items.map((itemId) => data.byId.get(itemId)).filter((o) => o?.cover);
+      panel.replaceChildren(
+        h("button", { class: "cover-upload", onclick: () => file.click() }, "upload an image…"),
+        art.length ? h("p", { class: "menu-head" }, "or an item's art") : null,
+        art.length ? h("div", { class: "cover-choices" }, art.map((o) => {
+          const pick = h("button", { class: `cover-choice ${collage.cover === `object:${o.id}` ? "on" : ""}`, title: o.title }, cover(o, "small"));
+          pick.addEventListener("click", () => choose(`object:${o.id}`, "saving…"));
+          return pick;
+        })) : null,
+        collage.cover ? h("button", { class: "bracket cover-reset", onclick: () => choose(null, "saving…") }, "[back to the first four covers]") : null,
+        status, file);
     }
-    // [edit]: the name, public or private, and deleting
-    let isPublic = collage.is_public;
-    const name = h("input", { class: "collage-name", type: "text", maxlength: "80", spellcheck: "false" });
-    name.value = collage.name;
-    const privacy = h("button", { class: "note-privacy" });
-    const drawPrivacy = () => privacy.replaceChildren(mi(isPublic ? "unlock" : "lock"), isPublic ? "public" : "private");
-    drawPrivacy();
-    privacy.addEventListener("click", () => { isPublic = !isPublic; drawPrivacy(); });
-    const status = h("span", { class: "note-meta" });
-    const save = h("button", { class: "note-button" }, "save");
-    const cancel = h("button", { class: "note-button", onclick: () => drawHead(false) }, "cancel");
-    const remove = h("button", { class: "bracket danger" }, "[delete collage]");
-    save.addEventListener("click", async () => {
-      if (!name.value.trim()) { status.textContent = "a collage needs a name"; return; }
-      save.disabled = true;
-      try {
-        await updateCollage(collage.id, { name: name.value.trim(), is_public: isPublic });
-        drawHead(false);
-      } catch (error) {
-        status.textContent = `couldn't save: ${error.message}`;
-        save.disabled = false;
-      }
-    });
-    remove.addEventListener("click", async () => {
-      if (!remove.dataset.sure) {
-        remove.dataset.sure = "yes";
-        remove.textContent = "[really? click again to delete it]";
-        return;
-      }
-      try {
-        await deleteCollage(collage.id);
-        location.hash = "#/library";
-      } catch (error) {
-        status.textContent = `couldn't delete: ${error.message}`;
-      }
-    });
-    name.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") save.click();
-      if (event.key === "Escape") drawHead(false);
-    });
-    head.replaceChildren(
-      name,
-      h("div", { class: "note-row" }, save, cancel, privacy, status),
-      h("p", { class: "meta" }, remove));
-    name.focus();
+    return h("div", { class: "cover-pick" }, bar, panel);
   }
 
-  const items = h("div", { class: "list" });
+  // --- the head: the name, and what it is
+  const facts = h("p", { class: "byline view-only" });
+  const count = h("span", {});
+  const drawFacts = () => {
+    facts.textContent = [plural(collage.items.length, "item", "items"), collage.is_public ? "public" : "private", mine ? "yours" : null]
+      .filter(Boolean).join(" · ");
+    count.textContent = plural(collage.items.length, "item", "items");
+  };
+  const title = h("h1", { class: "view-only" }, h("span", { class: "collage-title" }, collage.name),
+    h("span", { class: "badge" }, "collage"),
+    mine ? h("button", { class: "bracket", onclick: () => setEditing(true) }, "[edit]") : null);
+
+  let editHead = null;
+  const collageNotes = notesBlock(`collage:${collage.id}`);
+  if (mine) {
+    const name = h("input", { class: "collage-name", type: "text", maxlength: "80", spellcheck: "false", "aria-label": "name" });
+    name.value = collage.name;
+    const saveName = async () => {
+      const value = name.value.trim();
+      if (!value) { name.value = collage.name; return; }
+      if (value === collage.name) return;
+      try {
+        await updateCollage(collage.id, { name: value });
+        title.querySelector(".collage-title").textContent = collage.name;
+      } catch (error) {
+        name.value = collage.name;
+      }
+    };
+    name.addEventListener("keydown", (event) => { if (event.key === "Enter") name.blur(); });
+    name.addEventListener("blur", saveName);
+    const done = h("button", { class: "bracket" }, "[done]");
+    done.addEventListener("click", async () => { await saveName(); setEditing(false); });
+    const annotate = h("button", { class: "bracket" }, "[annotate collage]");
+    annotate.addEventListener("click", () => {
+      collageNotes.addNote();
+      collageNotes.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    editHead = h("div", { class: "edit-only collage-edit-head" },
+      h("div", { class: "collage-name-row" }, name, done),
+      h("p", { class: "byline" }, count, " ", annotate));
+  }
+  drawFacts();
+
+  // --- "in this set": the items, with their notes in this collage
+  let itemNotes = new Map();
+  try {
+    for (const note of await notesStartingWith(`collage:${collage.id}:`)) {
+      if (!itemNotes.has(note.about)) itemNotes.set(note.about, []);
+      itemNotes.get(note.about).push(note);
+    }
+  } catch { itemNotes = new Map(); }
+
+  const setCount = h("span", { class: "n" });
+  const drawSetCount = () => { setCount.textContent = [mine ? "yours" : "shared", collage.items.length].join(" · "); };
+  drawSetCount();
+  let privacy = null;
+  if (mine) {
+    privacy = h("select", { class: "collage-privacy edit-only", "aria-label": "who can see this collage" },
+      h("option", { value: "public" }, "public"), h("option", { value: "private" }, "private"));
+    privacy.value = collage.is_public ? "public" : "private";
+    privacy.addEventListener("change", async () => {
+      try {
+        await updateCollage(collage.id, { is_public: privacy.value === "public" });
+        drawFacts();
+      } catch {
+        privacy.value = collage.is_public ? "public" : "private";
+      }
+    });
+  }
+
+  const items = h("div", { class: "collage-items" });
   function drawItems() {
     const objects = collage.items.map((itemId) => data.byId.get(itemId)).filter(Boolean);
     if (!objects.length) {
       items.replaceChildren(h("p", { class: "empty" },
-        mine ? "Nothing here yet. Add releases and mixes from their pages, with the collage icon."
-          : "Nothing here yet."));
+        mine ? "Nothing here yet. Add releases and mixes from their pages, with the collage icon." : "Nothing here yet."));
       return;
     }
     items.replaceChildren(...objects.map((o) => {
-      const remove = mine ? h("button", { class: "bracket remove", title: "take it out of this collage" }, "[remove]") : null;
-      remove?.addEventListener("click", async (event) => {
-        event.preventDefault();          // the row is a link: don't follow it
-        event.stopPropagation();
-        remove.disabled = true;
-        try {
-          await removeFromCollage(collage.id, o.id);
-          drawItems(); drawHead(false); coverBox.replaceChildren(collageCover(collage));
-        } catch (error) {
-          remove.textContent = "[didn't work]";
-        }
-      });
-      return row(o, remove);
+      const about = `collage:${collage.id}:${o.id}`;
+      const notes = notesBlock(about, { compact: true, preloaded: itemNotes.get(about) || [] });
+      const actions = mine ? h("span", { class: "item-actions edit-only" },
+        rowButton("annotate", () => notes.addNote()),
+        rowButton("remove", async (button) => {
+          button.disabled = true;
+          try {
+            await removeFromCollage(collage.id, o.id);
+            itemNotes.delete(about);
+            drawItems(); drawFacts(); drawSetCount(); drawCover();
+          } catch {
+            button.textContent = "didn't work";
+          }
+        })) : null;
+      return h("div", { class: "collage-item" }, row(o, actions), notes);
     }));
   }
-
-  const coverBox = h("div", {}, collageCover(collage));
-  drawHead(false);
   drawItems();
+  drawCover();
+
+  // --- delete collage…
+  let footer = null;
+  if (mine) {
+    const remove = h("button", { class: "note-button" }, "delete collage…");
+    remove.addEventListener("click", async () => {
+      if (!remove.dataset.sure) {
+        remove.dataset.sure = "yes";
+        remove.textContent = "really delete it? click again";
+        return;
+      }
+      try {
+        await deleteCollage(collage.id);
+        location.hash = "#/profile";
+      } catch (error) {
+        remove.textContent = `didn't work: ${error.message}`;
+      }
+    });
+    footer = h("div", { class: "collage-footer edit-only" }, remove);
+  }
+
   page.append(
-    h("article", { class: "release" }, coverBox, head),
-    notesBlock(`collage:${collage.id}`),
-    h("h3", { class: "set-head" }, "in this set",
-      h("span", { class: "n" }, [mine ? "yours" : "shared", collage.items.length].join(" · "))),
-    items);
+    h("article", { class: "release" }, coverBox, h("div", { class: "release-main" }, title, facts, editHead)),
+    collageNotes,
+    h("div", { class: "set-head" }, h("h3", {}, "in this set"), setCount, privacy),
+    items,
+    footer);
   return page;
 }
 
@@ -251,18 +358,30 @@ export async function profilePage() {
       notes.replaceChildren(h("p", { class: "empty" }, `Your notes couldn't be loaded: ${error.message}`));
       return;
     }
-    const shown = rows.map((n) => {
-      // what the note is on: a release or mix, or a collage
+    // the notes on one thing together, the most recently written thing first
+    const groups = new Map();
+    for (const n of rows) {
+      if (!groups.has(n.about)) groups.set(n.about, []);
+      groups.get(n.about).push(n);
+    }
+    const shown = [...groups].map(([about, list]) => {
       let what = null;
-      if (n.about.startsWith("collage:")) {
-        const collage = collageById(n.about.slice(8));
-        if (collage) what = collageRow(collage, n.is_public ? "public" : "private");
-      } else if (data.byId.has(n.about)) {
-        what = row(data.byId.get(n.about), h("span", { class: "added" }, n.is_public ? "public" : "private"));
+      if (about.startsWith("collage:")) {
+        const [, collageId, objectId] = about.split(":");
+        const collage = collageById(collageId);
+        if (collage && objectId && data.byId.has(objectId)) {
+          what = row(data.byId.get(objectId), h("span", { class: "added" }, `in ${collage.name}`));
+        } else if (collage && !objectId) {
+          what = collageRow(collage, "");
+        }
+      } else if (data.byId.has(about)) {
+        what = row(data.byId.get(about));
       }
       if (!what) return null;
-      const text = n.body.length > 240 ? `${n.body.slice(0, 240).trim()}…` : n.body;
-      return h("div", { class: "profile-note" }, what, h("p", { class: "note-body" }, text));
+      return h("div", { class: "profile-note" }, what, list.slice().reverse().map((n) =>
+        h("div", { class: "profile-note-text" },
+          h("p", { class: "note-body" }, n.body.length > 240 ? `${n.body.slice(0, 240).trim()}…` : n.body),
+          h("p", { class: "note-meta" }, `${n.is_public ? "public" : "private"} · ${new Date(n.updated_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`))));
     }).filter(Boolean);
     notes.replaceChildren(...(shown.length ? shown
       : [h("p", { class: "empty" }, "No notes yet. The pencil on a release, a mix or a collage starts one.")]));
@@ -272,7 +391,7 @@ export async function profilePage() {
     h("h1", {}, "profile"),
     h("p", { class: "byline" }, user?.email || ""),
     h("h2", {}, "Collages"),
-    mine.length ? h("div", { class: "list" }, mine.map(collageRow))
+    mine.length ? h("div", { class: "list" }, mine.map((c) => collageRow(c)))
       : h("p", { class: "empty" }, "No collages yet. The collage icon on a release or mix starts one."),
     h("div", { class: "chips" }, newCollageChip()),
     h("h2", {}, "Notes"),

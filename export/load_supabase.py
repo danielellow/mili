@@ -143,7 +143,10 @@ def database_url():
 
 def connect(url):
     try:
-        return psycopg.connect(url, connect_timeout=20, application_name="mili loader")
+        conn = psycopg.connect(url, connect_timeout=20, application_name="mili loader")
+        # show warnings from the database (e.g. if the covers bucket couldn't be made)
+        conn.add_notice_handler(lambda notice: notice.severity in ("WARNING", "ERROR") and print(f"  {notice.message_primary}"))
+        return conn
     except psycopg.OperationalError as error:
         # the message names the server but never the password
         sys.exit(f"Couldn't connect to Supabase:\n  {str(error).strip()}\n"

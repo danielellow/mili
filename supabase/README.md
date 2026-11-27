@@ -47,7 +47,12 @@ It needs two secrets, set under Edge Functions → Secrets (never in the website
 ## Notes, collages and signing in
 
 Notes and collages are written from the website, so they live in tables of
-their own (`user_data.sql`): `notes`, `collages` and `collage_items`. Row level
+their own (`user_data.sql`): `notes`, `collages` and `collage_items`. A thing
+can have several notes, and an item in a collage can have notes of its own
+(about = `collage:<collage id>:<mili ID>`). Covers people upload for their
+collages go in a public Storage bucket, `covers`, in a folder per person; the
+loader makes it, and says so if it can't (then: Storage → New bucket → `covers`,
+public, and run the loader again). Row level
 security decides who sees what. Anyone can read public notes and collages.
 Only the person who made something can change it, and only they see it when
 it's private. Postgres checks this on every request, whatever the website asks.

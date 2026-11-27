@@ -1,8 +1,11 @@
 -- mili: what people make on the site, saved in Supabase.
 --
---   notes           a text note on a release, a mix or a collage, one per person per thing
---   collages        named lists of releases and mixes (like Are.na channels)
+--   notes           text notes on a release, a mix, a collage, or an item in a
+--                   collage; as many as you like on each
+--   collages        named lists of releases and mixes (like Are.na channels),
+--                   with a cover of their own if you choose one
 --   collage_items   what's in each collage, in order
+--   covers          (a Storage bucket) images uploaded as collage covers
 --
 -- These tables are different from the ones in schema.sql. Those are the
 -- catalogue: export/load_supabase.py empties and refills them on every load.
@@ -25,25 +28,48 @@
 -- ---------------------------------------------------------------------------
 
 create table if not exists public.notes (
+    id          uuid primary key default gen_random_uuid(),
     owner       uuid not null default auth.uid() references auth.users (id) on delete cascade,
-    about       text not null,              -- a mili ID (release or mix), or "collage:<collage id>"
+    about       text not null,              -- what it's on: a mili ID (release or mix),
+                                            -- "collage:<collage id>", or for an item in a
+                                            -- collage "collage:<collage id>:<mili ID>"
     body        text not null check (length(body) <= 20000),
     is_public   boolean not null default false,   -- notes start private
     created_at  timestamptz not null default now(),
-    updated_at  timestamptz not null default now(),
-    primary key (owner, about)
+    updated_at  timestamptz not null default now()
 );
+
+-- Notes used to be one per person per thing, keyed by (owner, about). Now each
+-- note has an id of its own, so a thing can have several. This turns an
+-- older table into the new shape, keeping every note (it does nothing after that).
+alter table public.notes add column if not exists id uuid not null default gen_random_uuid();
+do $$
+begin
+    if exists (
+        select 1 from pg_constraint
+        where conrelid = 'public.notes'::regclass and contype = 'p'
+          and pg_get_constraintdef(oid) = 'PRIMARY KEY (owner, about)'
+    ) then
+        alter table public.notes drop constraint notes_pkey;
+        alter table public.notes add primary key (id);
+    end if;
+end
+$$;
 create index if not exists notes_about on public.notes (about);
+create index if not exists notes_owner on public.notes (owner, updated_at desc);
 
 create table if not exists public.collages (
     id          uuid primary key default gen_random_uuid(),
     owner       uuid not null default auth.uid() references auth.users (id) on delete cascade,
     name        text not null check (length(trim(name)) between 1 and 80),
     is_public   boolean not null default true,    -- collages start public, like on Are.na
+    cover       text check (length(cover) <= 500), -- "object:<mili ID>" (an item's art),
+                                                  -- or the address of an uploaded image
     created_at  timestamptz not null default now(),
     updated_at  timestamptz not null default now()
 );
 create index if not exists collages_owner on public.collages (owner);
+alter table public.collages add column if not exists cover text check (length(cover) <= 500);
 
 create table if not exists public.collage_items (
     collage_id  uuid not null references public.collages (id) on delete cascade,
@@ -149,3 +175,33 @@ create policy "change items in your own collages" on public.collage_items
 revoke all on public.notes, public.collages, public.collage_items from anon, authenticated;
 grant select on public.notes, public.collages, public.collage_items to anon;
 grant select, insert, update, delete on public.notes, public.collages, public.collage_items to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Uploaded covers: a public Storage bucket called "covers". Anyone can look at
+-- the images (they're collage covers); signed-in people can only upload into
+-- a folder named after themselves (covers/<their user id>/…), and only images
+-- up to 2 MB. If this can't be set up from here, the loader says so: then make
+-- the bucket by hand (Storage → New bucket → "covers", public) and run the
+-- loader again for the rules.
+-- ---------------------------------------------------------------------------
+
+do $$
+begin
+    insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    values ('covers', 'covers', true, 2097152, array['image/jpeg', 'image/png', 'image/webp'])
+    on conflict (id) do nothing;
+
+    drop policy if exists "upload covers into your own folder" on storage.objects;
+    create policy "upload covers into your own folder" on storage.objects
+        for insert to authenticated
+        with check (bucket_id = 'covers' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+    drop policy if exists "delete your own covers" on storage.objects;
+    create policy "delete your own covers" on storage.objects
+        for delete to authenticated
+        using (bucket_id = 'covers' and (storage.foldername(name))[1] = (select auth.uid())::text);
+exception when others then
+    raise warning 'mili: the "covers" bucket for uploaded collage covers could not be set up from here (%). '
+                  'Make it in the dashboard (Storage → New bucket → covers, public), then run the loader again.', sqlerrm;
+end
+$$;
