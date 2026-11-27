@@ -4,6 +4,11 @@
 # One-time setup on github.com: the repository's Settings → Pages →
 # "Build and deployment" → Source: GitHub Actions.
 # You can follow each run under the repository's Actions tab.
+#
+# It's two jobs: "upload" packs the site folder, then "publish" puts it live.
+# They're separate because GitHub sometimes needs a moment before an upload
+# can be found; asking for it in the same job, straight after, often failed.
+# For the same reason "publish" tries a second time if the first try fails.
 
 name: Publish the site
 
@@ -15,7 +20,7 @@ on:
 
 permissions:
   contents: read
-  actions: read          # deploy-pages looks up the uploaded site by its ID
+  actions: read             # publish looks up the uploaded site
   pages: write
   id-token: write
 
@@ -24,16 +29,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  publish:
+  upload:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site
-      - id: deployment
+          # a new name for each attempt, so "Re-run jobs" never finds two uploads
+          name: github-pages-${{ github.run_attempt }}
+
+  publish:
+    needs: upload
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.first.outputs.page_url || steps.second.outputs.page_url }}
+    steps:
+      - name: Publish
+        id: first
+        continue-on-error: true
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
+      - name: Wait a little before trying again
+        if: steps.first.outcome == 'failure'
+        run: sleep 30
+      - name: Publish (second try)
+        id: second
+        if: steps.first.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
